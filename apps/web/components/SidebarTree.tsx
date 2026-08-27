@@ -42,7 +42,8 @@ function TreeNode({
   children,
   onClick,
   href,
-  level = 0
+  level = 0,
+  onNavigate
 }: { 
   id: string, 
   label: string, 
@@ -50,7 +51,8 @@ function TreeNode({
   children?: React.ReactNode,
   onClick?: () => void,
   href?: string,
-  level?: number
+  level?: number,
+  onNavigate?: () => void
 }) {
   const { expandedNodes, toggleNode } = useSidebarStore();
   const isExpanded = !!expandedNodes[id];
@@ -66,6 +68,7 @@ function TreeNode({
     }
     if (href) {
       router.push(href);
+      if (onNavigate) onNavigate();
     }
     if (onClick) onClick();
   };
@@ -100,23 +103,23 @@ function TreeNode({
 }
 
 // Table Node with Placeholders
-function TableNode({ dbName, tableName, level }: { dbName: string, tableName: string, level: number }) {
+function TableNode({ dbName, tableName, level, onNavigate }: { dbName: string, tableName: string, level: number, onNavigate?: () => void }) {
   return (
-    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level}>
-      <TreeNode id={`${dbName}-${tableName}-columns`} label="Columns" icon={FolderIcon} level={level + 1}>
-        <TreeNode id={`${dbName}-${tableName}-col-1`} label="id (int8)" icon={FolderIcon} level={level + 2} />
-        <TreeNode id={`${dbName}-${tableName}-col-2`} label="name (varchar)" icon={FolderIcon} level={level + 2} />
+    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} onNavigate={onNavigate}>
+      <TreeNode id={`${dbName}-${tableName}-columns`} label="Columns" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
+        <TreeNode id={`${dbName}-${tableName}-col-1`} label="id (int8)" icon={FolderIcon} level={level + 2} onNavigate={onNavigate} />
+        <TreeNode id={`${dbName}-${tableName}-col-2`} label="name (varchar)" icon={FolderIcon} level={level + 2} onNavigate={onNavigate} />
       </TreeNode>
-      <TreeNode id={`${dbName}-${tableName}-constraints`} label="Constraints" icon={FolderIcon} level={level + 1} />
-      <TreeNode id={`${dbName}-${tableName}-fks`} label="Foreign Keys" icon={FolderIcon} level={level + 1} />
-      <TreeNode id={`${dbName}-${tableName}-idx`} label="Indexes" icon={FolderIcon} level={level + 1} />
-      <TreeNode id={`${dbName}-${tableName}-dep`} label="Dependencies" icon={FolderIcon} level={level + 1} />
+      <TreeNode id={`${dbName}-${tableName}-constraints`} label="Constraints" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
+      <TreeNode id={`${dbName}-${tableName}-fks`} label="Foreign Keys" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
+      <TreeNode id={`${dbName}-${tableName}-idx`} label="Indexes" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
+      <TreeNode id={`${dbName}-${tableName}-dep`} label="Dependencies" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
     </TreeNode>
   );
 }
 
 // Database Node that fetches tables when expanded
-function DatabaseNode({ dbName, level }: { dbName: string, level: number }) {
+function DatabaseNode({ dbName, level, onNavigate }: { dbName: string, level: number, onNavigate?: () => void }) {
   const { expandedNodes } = useSidebarStore();
   const isExpanded = !!expandedNodes[`db-${dbName}`];
   const isTablesExpanded = !!expandedNodes[`${dbName}-tables`];
@@ -129,34 +132,34 @@ function DatabaseNode({ dbName, level }: { dbName: string, level: number }) {
   }, [isTablesExpanded, dbName, tables.length]);
 
   return (
-    <TreeNode id={`db-${dbName}`} label={dbName} icon={DatabaseIcon} level={level} href={`/databases?id=${dbName}`}>
-      <TreeNode id={`${dbName}-schemas`} label="Schemas" icon={FolderIcon} level={level + 1}>
-        <TreeNode id={`${dbName}-public`} label="public" icon={FolderIcon} level={level + 2}>
-          <TreeNode id={`${dbName}-tables`} label="Tables" icon={FolderIcon} level={level + 3} href={`/databases?id=${dbName}`}>
+    <TreeNode id={`db-${dbName}`} label={dbName} icon={DatabaseIcon} level={level} href={`/databases?id=${dbName}`} onNavigate={onNavigate}>
+      <TreeNode id={`${dbName}-schemas`} label="Schemas" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
+        <TreeNode id={`${dbName}-public`} label="public" icon={FolderIcon} level={level + 2} onNavigate={onNavigate}>
+          <TreeNode id={`${dbName}-tables`} label="Tables" icon={FolderIcon} level={level + 3} href={`/databases?id=${dbName}`} onNavigate={onNavigate}>
             {tables.length > 0 ? (
               tables.map(t => (
-                <TableNode key={t.name} dbName={dbName} tableName={t.name} level={level + 4} />
+                <TableNode key={t.name} dbName={dbName} tableName={t.name} level={level + 4} onNavigate={onNavigate} />
               ))
             ) : (
               <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 4) * 12 + 8}px` }}>Loading tables...</div>
             )}
           </TreeNode>
-          <TreeNode id={`${dbName}-views`} label="Views" icon={FolderIcon} level={level + 3} />
+          <TreeNode id={`${dbName}-views`} label="Views" icon={FolderIcon} level={level + 3} onNavigate={onNavigate} />
         </TreeNode>
       </TreeNode>
-      <TreeNode id={`${dbName}-event-triggers`} label="Event Triggers" icon={FolderIcon} level={level + 1} />
-      <TreeNode id={`${dbName}-extensions`} label="Extensions" icon={FolderIcon} level={level + 1} />
-      <TreeNode id={`${dbName}-roles`} label="Roles" icon={FolderIcon} level={level + 1} />
+      <TreeNode id={`${dbName}-event-triggers`} label="Event Triggers" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
+      <TreeNode id={`${dbName}-extensions`} label="Extensions" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
+      <TreeNode id={`${dbName}-roles`} label="Roles" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
     </TreeNode>
   );
 }
 
-export function SidebarTree({ databases }: { databases: string[] }) {
+export function SidebarTree({ databases, onNavigate }: { databases: string[], onNavigate?: () => void }) {
   return (
     <div className="py-2">
-      <TreeNode id="root-databases" label="Databases" icon={FolderIcon} level={0}>
+      <TreeNode id="root-databases" label="Databases" icon={FolderIcon} level={0} onNavigate={onNavigate}>
         {databases.map(dbName => (
-          <DatabaseNode key={dbName} dbName={dbName} level={1} />
+          <DatabaseNode key={dbName} dbName={dbName} level={1} onNavigate={onNavigate} />
         ))}
       </TreeNode>
     </div>
