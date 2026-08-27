@@ -47,7 +47,7 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
               databases.map((dbName) => (
                 <Link 
                   key={dbName} 
-                  href={`/databases/${dbName}`}
+                  href={`/databases?id=${dbName}`}
                   className="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded-md transition-colors"
                 >
                   {dbName}

@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"dboke-api/internal/core/domain"
@@ -67,8 +69,12 @@ func (m *InMemorySessionStore) ExtendSession(ctx context.Context, sessionID stri
 
 func main() {
 	// Attempt to load .env from common locations
-	_ = godotenv.Load("../../.env")
-	_ = godotenv.Load(".env")
+	err1 := godotenv.Load("../../.env")
+	err2 := godotenv.Load(".env")
+	
+	if err1 != nil && err2 != nil {
+		slog.Warn("No .env file found in common locations, falling back to system environment variables")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -100,8 +106,26 @@ func main() {
 		Handler: r,
 	}
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("Server startup failed", slog.String("error", err.Error()))
-		os.Exit(1)
+	// Setup graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server startup failed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}()
+	
+	<-stop
+	slog.Info("Shutting down API server gracefully...")
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	if err := server.Shutdown(ctx); err != nil {
+		slog.Error("Server forced to shutdown", slog.String("error", err.Error()))
 	}
+	
+	slog.Info("Server stopped")
 }

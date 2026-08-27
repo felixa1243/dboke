@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/services"
+	"dboke-api/internal/pkg/response"
 	"log/slog"
 )
 
@@ -30,7 +31,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		slog.Error("Invalid login request payload", slog.String("error", err.Error()))
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_PAYLOAD", "Invalid request payload")
 		return
 	}
 
@@ -54,7 +55,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	session, err := h.authService.Authenticate(r.Context(), req.DbType, config)
 	if err != nil {
 		slog.Error("Login failed", slog.String("error", err.Error()))
-		http.Error(w, "Invalid credentials or connection failed", http.StatusUnauthorized)
+		response.WriteError(w, http.StatusUnauthorized, "AUTH_FAILED", "Invalid credentials or connection failed")
 		return
 	}
 

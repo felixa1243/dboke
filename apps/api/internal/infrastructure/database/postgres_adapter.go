@@ -134,9 +134,23 @@ func (p *PostgresAdapter) GetTables(ctx context.Context, database string) ([]dom
 // GetTableSchema retrieves column metadata for a specific table
 func (p *PostgresAdapter) GetTableSchema(ctx context.Context, database, table string) ([]domain.ColumnMetadata, error) {
 	query := `
-		SELECT column_name, data_type, is_nullable
-		FROM information_schema.columns
-		WHERE table_schema = 'public' AND table_name = $1
+		SELECT 
+			c.column_name, 
+			c.data_type, 
+			c.is_nullable,
+			CASE WHEN pk.column_name IS NOT NULL THEN true ELSE false END AS is_primary_key
+		FROM information_schema.columns c
+		LEFT JOIN (
+			SELECT kcu.column_name
+			FROM information_schema.table_constraints tco
+			JOIN information_schema.key_column_usage kcu 
+			  ON kcu.constraint_name = tco.constraint_name
+			  AND kcu.constraint_schema = tco.constraint_schema
+			WHERE tco.constraint_type = 'PRIMARY KEY' 
+			  AND kcu.table_name = $1
+			  AND kcu.table_schema = 'public'
+		) pk ON c.column_name = pk.column_name
+		WHERE c.table_schema = 'public' AND c.table_name = $1
 	`
 	rows, err := p.pool.Query(ctx, query, table)
 	if err != nil {
@@ -148,7 +162,7 @@ func (p *PostgresAdapter) GetTableSchema(ctx context.Context, database, table st
 	for rows.Next() {
 		var meta domain.ColumnMetadata
 		var isNullable string
-		if err := rows.Scan(&meta.Name, &meta.Type, &isNullable); err != nil {
+		if err := rows.Scan(&meta.Name, &meta.Type, &isNullable, &meta.IsPrimaryKey); err != nil {
 			return nil, err
 		}
 		meta.IsNullable = (isNullable == "YES")

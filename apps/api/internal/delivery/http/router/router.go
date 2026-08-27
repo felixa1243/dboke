@@ -8,6 +8,7 @@ import (
 	"dboke-api/internal/delivery/http/handler"
 	"dboke-api/internal/pkg/logger"
 	"dboke-api/internal/core/services"
+	"dboke-api/internal/pkg/contextkeys"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -61,8 +62,8 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 		protected.Use(customMiddleware.AuthMiddleware(sessionStore))
 
 		protected.Get("/api/v1/ping", func(w http.ResponseWriter, r *http.Request) {
-			userID := r.Context().Value("user_id").(string)
-			role := r.Context().Value("role").(string)
+			userID := r.Context().Value(contextkeys.UserIDKey).(string)
+			role := r.Context().Value(contextkeys.RoleKey).(string)
 			
 			response := "Hello Secured User! ID: " + userID + ", Role: " + role
 			w.Write([]byte(response))
