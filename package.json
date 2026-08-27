@@ -1,0 +1,8 @@
+{
+  "name": "dboke",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
