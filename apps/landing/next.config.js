@@ -6,7 +6,7 @@ const nextConfig = {
   },
   // Ensure the base path works if this is deployed to a subpath like github.io/dboke
   // If deployed to a custom domain, this isn't needed. Assuming github.io/repo for now.
-  // basePath: '/dboke', // Uncomment if deploying to a repository subpath
+  basePath: '/dboke',
 };
 
 module.exports = nextConfig;

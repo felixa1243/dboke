@@ -13,10 +13,10 @@ export default function LandingPage() {
 
       <div className="z-10 text-center max-w-3xl px-6">
         <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
-          The Universal <br /> Database Manager
+          The Universal <br /> Visual Database Explorer
         </h1>
         <p className="text-lg md:text-xl text-gray-500 dark:text-gray-400 mb-10 max-w-2xl mx-auto font-medium">
-          A secure, high-performance database management tool built with Go and Next.js. 
+          A secure, high-performance visual database explorer built with Go and Next.js. 
           Experience a minimalist, elegant aesthetic with native support for PostgreSQL, MySQL, and MongoDB.
         </p>
 
