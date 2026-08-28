@@ -11,15 +11,15 @@ Dboke is a highly secure, modern web-based database management tool built with a
 ## Key Features
 
 ### 🛡️ Enterprise-Grade Security
-- **AES-256-GCM Encryption:** Database credentials are symmetrically encrypted in-memory and bound directly to user sessions. No plaintext passwords are ever stored.
-- **Zero-Trust Sessions:** Cryptographically secure 32-byte session IDs via HTTP-Only, SameSite=Lax cookies.
-- **CSRF Protection:** Strict `X-CSRF-Token` header validation for all state-changing API endpoints, seamlessly integrated with multi-tab session persistence.
+- **Strong Encryption:** Database credentials are symmetrically encrypted in-memory and bound directly to user sessions. No plaintext passwords are ever stored.
+- **Secure Sessions:** Cryptographically secure sessions that keep your connections safe and isolated.
+- **CSRF Protection:** Strict validation for all state-changing actions, seamlessly integrated with multi-tab session persistence.
 
 ### 🏗️ Architecture & Backend
-- **Golang Clean Architecture:** Strict separation of concerns (Delivery, Services, Domain, Infrastructure).
-- **Dynamic Connection Pooling:** Isolated `pgx/v5` connection pools spawned dynamically per database context.
-- **Universal SQL Execution:** Robust raw SQL (DQL/DML) execution with automatic, dialect-agnostic pagination (via subquery limits and offsets).
-- **Live Schema Introspection:** Real-time extraction of Postgres/MySQL schemas, including table structures, primary keys, exact row counts, and data footprint sizes.
+- **Clean Architecture:** Strict separation of concerns ensuring a maintainable and scalable core.
+- **Dynamic Connection Pooling:** Isolated connection pools spawned dynamically per database context.
+- **Universal SQL Execution:** Robust raw SQL execution with automatic, smart pagination.
+- **Live Schema Introspection:** Real-time extraction of database schemas, including table structures, primary keys, exact row counts, and data sizes.
 
 ### 🎨 Frontend Excellence & Workspace
 - **Multi-Connection Manager:** Manage multiple active local/remote databases in a single sidebar workspace without dropping sessions.
@@ -29,9 +29,9 @@ Dboke is a highly secure, modern web-based database management tool built with a
 - **Next.js 14 & Tailwind CSS v4:** Premium glassmorphism UI, robust Zustand state management, and seamless Light/Dark mode toggling.
 
 ### 🧩 Dynamic Plugin Ecosystem
-- **Full-Stack Bundles:** Create standalone `.zip` plugins that bundle a Go backend binary (via HashiCorp `go-plugin` gRPC) and a Next.js `page.tsx` frontend.
-- **Native Hot-Reloading:** Uploaded plugins automatically inject their React components directly into the Next.js App Router for instant, native rendering.
-- **Lifecycle Management:** Activate, deactivate (which safely `404`s the route), or permanently delete plugins directly from the UI without touching the core codebase or restarting the server.
+- **Full-Stack Bundles:** Create standalone plugins that easily bundle custom backend logic and frontend interfaces.
+- **Native Hot-Reloading:** Uploaded plugins automatically inject their components directly into the app for instant rendering.
+- **Lifecycle Management:** Activate, deactivate, or permanently delete plugins directly from the UI without restarting the server.
 
 ## Prerequisites
 
