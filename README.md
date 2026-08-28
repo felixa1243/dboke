@@ -30,6 +30,7 @@ Dboke is a highly secure, modern web-based database management tool built with a
 
 ### 🧩 Dynamic Plugin Ecosystem
 - **Full-Stack Bundles:** Create standalone plugins that easily bundle custom backend logic and frontend interfaces.
+- **Self-Describing Metadata:** Plugins are self-describing via a required `meta.json` file inside the bundle. (Check the `example_plugins` folder for a real working plugin example!)
 - **Native Hot-Reloading:** Uploaded plugins automatically inject their components directly into the app for instant rendering.
 - **Lifecycle Management:** Activate, deactivate, or permanently delete plugins directly from the UI without restarting the server.
 

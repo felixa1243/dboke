@@ -1,0 +1,6 @@
+{
+  "id": "data-seeder",
+  "name": "Data Seeder",
+  "description": "Generate and seed databases with fake realistic data directly from your schema.",
+  "creator": "Dboke Team"
+}

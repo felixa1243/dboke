@@ -74,14 +74,29 @@ export default function CustomPluginPage() {
 
             <h3 className="text-lg font-semibold mb-2">3. Packaging & Installation</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Once you have compiled <code>backend.exe</code> and created <code>frontend/page.tsx</code>, compress them into a single <code>.zip</code> file structure:
+              To bundle your plugin, you must include a <code>meta.json</code> file describing your plugin alongside the <code>backend.exe</code> and <code>frontend/page.tsx</code>. Then compress them into a <code>.zip</code>:
             </p>
             <pre className="p-4 bg-black text-gray-300 rounded-lg text-sm overflow-x-auto mb-6">
 {`my-plugin.zip/
+├── meta.json
 ├── backend.exe
 └── frontend/
     └── page.tsx`}
             </pre>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Your <code>meta.json</code> should look like this:
+            </p>
+            <pre className="p-4 bg-black text-gray-300 rounded-lg text-sm overflow-x-auto mb-6">
+{`{
+  "id": "my-custom-plugin",
+  "name": "My Custom Plugin",
+  "description": "An amazing plugin for Dboke.",
+  "creator": "Dboke Developer"
+}`}
+            </pre>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              You can check the <code>example_plugins/data_seeder</code> directory in the Dboke source code to see a full, working example of a plugin and its build script.
+            </p>
             <p className="text-gray-600 dark:text-gray-400">
               Navigate to the <b>Plugins</b> tab in Dboke, click <b>(+) Add Plugin</b>, and upload your <code>.zip</code> file. Dboke will securely extract the backend binary into the background engine, and dynamically hot-reload your <code>page.tsx</code> directly into the web application. Your plugin will be instantly live!
             </p>

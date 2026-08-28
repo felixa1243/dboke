@@ -47,7 +47,7 @@ function DatabaseContent() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'tables' | 'query'>('tables');
+  const [activeTab, setActiveTab] = useState<'tables' | 'data' | 'query'>('tables');
   
   // SQL Query State
   const [query, setQuery] = useState('');
@@ -57,9 +57,49 @@ function DatabaseContent() {
   const [queryLimit, setQueryLimit] = useState(200);
   const [queryOffset, setQueryOffset] = useState(0);
 
-  // Saved Queries State
   const [savedQueries, setSavedQueries] = useState<{name: string, query: string}[]>([]);
   const [sidebarTab, setSidebarTab] = useState<'tables' | 'saved'>('tables');
+
+  // Table Data State
+  const [dataResult, setDataResult] = useState<any>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
+  const [dataLimit, setDataLimit] = useState(200);
+  const [dataOffset, setDataOffset] = useState(0);
+
+  const fetchTableData = async (overrideOffset?: number) => {
+    if (!expandedTable) return;
+    setDataLoading(true);
+    setDataError('');
+    const offsetToUse = overrideOffset !== undefined ? overrideOffset : dataOffset;
+    setDataOffset(offsetToUse);
+
+    try {
+      const q = `SELECT * FROM "${expandedTable}"`;
+      const res = await databasesApi.executeQuery(dbId as string, q, [], dataLimit, offsetToUse);
+      if (offsetToUse > 0 && dataResult?.rows) {
+        setDataResult({
+          ...res,
+          rows: [...dataResult.rows, ...res.rows],
+        });
+      } else {
+        setDataResult(res);
+      }
+    } catch (err: any) {
+      setDataError(err.message || 'Failed to fetch data');
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  // Automatically fetch table data when switching to Data tab or when selected table changes
+  useEffect(() => {
+    if (activeTab === 'data' && expandedTable) {
+      fetchTableData(0);
+    } else if (activeTab === 'data' && !expandedTable) {
+      setDataResult(null);
+    }
+  }, [activeTab, expandedTable, dataLimit]);
 
   useEffect(() => {
     if (dbId) {
@@ -166,6 +206,12 @@ function DatabaseContent() {
               className={`pb-2 text-sm font-medium transition-colors ${activeTab === 'tables' ? 'border-b-2 border-black dark:border-white text-black dark:text-white' : 'text-gray-500 hover:text-black dark:hover:text-white'}`}
             >
               Tables
+            </button>
+            <button 
+              onClick={() => setActiveTab('data')}
+              className={`pb-2 text-sm font-medium transition-colors ${activeTab === 'data' ? 'border-b-2 border-black dark:border-white text-black dark:text-white' : 'text-gray-500 hover:text-black dark:hover:text-white'}`}
+            >
+              Data
             </button>
             <button 
               onClick={() => setActiveTab('query')}
@@ -277,7 +323,101 @@ function DatabaseContent() {
             )}
           </tbody>
         </table>
-      </div>
+        </div>
+      ) : activeTab === 'data' ? (
+        <div className="w-full flex-1 flex flex-col min-h-0">
+          {!expandedTable ? (
+            <div className="flex-1 flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800 rounded-lg p-12 text-gray-400">
+              Please select a table from the Tables tab to view its data.
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col gap-6 min-w-0 w-full">
+              <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4 shadow-sm">
+                <div className="flex-1 flex items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Table:</span>
+                  <span className="text-sm font-mono bg-white dark:bg-black px-2 py-1 rounded border border-gray-200 dark:border-gray-700">{expandedTable}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1 shadow-sm">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Limit</span>
+                  <input 
+                    type="number" 
+                    min="1"
+                    max="10000"
+                    value={dataLimit}
+                    onChange={e => setDataLimit(parseInt(e.target.value) || 200)}
+                    className="w-16 text-sm text-center bg-transparent border-none outline-none text-black dark:text-white"
+                  />
+                </div>
+                <button 
+                  onClick={() => fetchTableData(0)}
+                  disabled={dataLoading}
+                  className="px-4 py-2 bg-black text-white dark:bg-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50"
+                >
+                  {dataLoading && dataOffset === 0 ? 'Fetching...' : 'Refresh'}
+                </button>
+              </div>
+
+              {dataError && (
+                <div className="p-4 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-900 rounded-lg text-sm font-mono whitespace-pre-wrap shadow-sm">
+                  {dataError}
+                </div>
+              )}
+
+              {dataResult && dataResult.columns && (
+                <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden shadow-sm flex flex-col max-h-[700px]">
+                  <div className="bg-gray-50 dark:bg-gray-900 p-3 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+                      Data Grid
+                    </span>
+                    {dataResult.rows && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500 font-mono">
+                          {dataResult.rows.length} rows fetched
+                        </span>
+                        {dataResult.rows.length >= dataLimit + dataOffset && (
+                          <button 
+                            onClick={() => fetchTableData(dataOffset + dataLimit)}
+                            disabled={dataLoading}
+                            className="px-3 py-1 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 text-xs font-semibold rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                          >
+                            {dataLoading ? 'Fetching...' : 'Fetch Next'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="overflow-auto flex-1 relative">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
+                          {dataResult.columns.map((col: string, i: number) => (
+                            <th key={i} className="px-6 py-3 text-xs font-medium text-black dark:text-white uppercase">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {dataResult.rows && dataResult.rows.map((row: any, i: number) => (
+                          <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-900/50">
+                            {dataResult.columns.map((col: string, j: number) => (
+                              <td key={j} className="px-6 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">
+                                {row[col] === null ? <span className="text-gray-400 italic">NULL</span> : String(row[col])}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {!dataResult.rows?.length && (
+                      <div className="p-12 text-center text-sm text-gray-500">
+                        No data available in this table
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="w-full flex flex-col md:flex-row gap-6 animate-in fade-in duration-300 items-start">
           

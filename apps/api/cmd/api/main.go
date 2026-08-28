@@ -16,6 +16,7 @@ import (
 	"dboke-api/internal/delivery/http/router"
 	"dboke-api/internal/infrastructure/database"
 	"dboke-api/internal/pkg/logger"
+	"dboke-api/internal/pkg/taskqueue"
 
 	"github.com/joho/godotenv"
 )
@@ -99,6 +100,7 @@ func main() {
 
 	// 1. Initialize Infrastructure (e.g. Session Store, Internal DB)
 	sessionStore := NewInMemorySessionStore()
+	taskqueue.InitWorkerPool(3)
 
 	// Initialize Database Adapters from Registry
 	adapterFactories := database.GetAdapterFactories()

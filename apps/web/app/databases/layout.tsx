@@ -19,19 +19,10 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     async function loadDatabases() {
       try {
+        setLoading(true);
         const res = await databasesApi.getDatabases();
         setDatabases(res.databases);
-
-        // Fetch plugins for the sidebar
-        try {
-          const pluginsData = await apiClient<any[]>('/api/v1/plugins', { method: 'GET' });
-          if (Array.isArray(pluginsData)) {
-            setPlugins(pluginsData.filter((p: any) => p.status === 'Active'));
-          }
-        } catch (e) {
-          console.error("Failed to load plugins in sidebar:", e);
-        }
-
+        await loadPlugins();
       } catch (err: any) {
         if (err.status === 401 || err.status === 403) {
           router.push('/');
@@ -41,8 +32,30 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
         setLoading(false);
       }
     }
+    
+    async function loadPlugins() {
+      try {
+        const pluginsData = await apiClient<any[]>('/api/v1/plugins', { method: 'GET' });
+        if (Array.isArray(pluginsData)) {
+          setPlugins(pluginsData.filter((p: any) => p.status === 'Active'));
+        }
+      } catch (e) {
+        console.error("Failed to load plugins in sidebar:", e);
+      }
+    }
+
     loadDatabases();
-  }, []);
+
+    // Listen for custom events to refresh the sidebar dynamically
+    const handlePluginsUpdated = () => {
+      loadPlugins();
+    };
+    window.addEventListener('dboke_plugins_updated', handlePluginsUpdated);
+    
+    return () => {
+      window.removeEventListener('dboke_plugins_updated', handlePluginsUpdated);
+    };
+  }, [router]);
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row overflow-hidden bg-white dark:bg-black text-black dark:text-white font-sans selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black">

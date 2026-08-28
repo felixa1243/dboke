@@ -10,13 +10,16 @@ import (
 )
 
 func main() {
-	pluginName := "visual_query"
-	pluginDir := filepath.Join(".", pluginName)
+	pluginName := "data-seeder" // This should match what Dboke expects (kebab-case folder structure)
+	sourceDir := "data_seeder" // Our local folder name
 	
 	fmt.Println("1. Compiling Go backend...")
-	// Compile backend.exe from backend/main.go
-	cmd := exec.Command("go", "build", "-o", filepath.Join(pluginDir, "backend.exe"), filepath.Join(pluginDir, "backend", "main.go"))
+	backendSrc := filepath.Join(sourceDir, "backend", "main.go")
+	backendExec := filepath.Join(sourceDir, "backend.exe")
+	
+	cmd := exec.Command("go", "build", "-o", backendExec, backendSrc)
 	cmd.Stdout = os.Stdout
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("Failed to compile: %v\n", err)
@@ -36,13 +39,16 @@ func main() {
 	defer w.Close()
 
 	// Add backend.exe to zip
-	addFileToZip(w, filepath.Join(pluginDir, "backend.exe"), "backend.exe")
+	addFileToZip(w, backendExec, "backend.exe")
 	
 	// Add frontend/page.tsx to zip
-	addFileToZip(w, filepath.Join(pluginDir, "frontend", "page.tsx"), "frontend/page.tsx")
+	addFileToZip(w, filepath.Join(sourceDir, "frontend", "page.tsx"), "frontend/page.tsx")
+	
+	// Add meta.json to zip
+	addFileToZip(w, filepath.Join(sourceDir, "meta.json"), "meta.json")
 	
 	// Cleanup compiled backend.exe so the source directory stays clean
-	os.Remove(filepath.Join(pluginDir, "backend.exe"))
+	os.Remove(backendExec)
 	
 	fmt.Println("Done! You can now upload", zipName, "in Dboke.")
 }

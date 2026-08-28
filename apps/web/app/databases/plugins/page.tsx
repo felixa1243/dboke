@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+
 interface PluginInfo {
   id: string;
   name: string;
@@ -11,18 +13,25 @@ interface PluginInfo {
 }
 
 export default function PluginsPage() {
+  const router = useRouter();
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [pluginName, setPluginName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [taskProgress, setTaskProgress] = useState(0);
+  const [taskMessage, setTaskMessage] = useState("");
   const [externalPlugins, setExternalPlugins] = useState<PluginInfo[]>([]);
 
   const fetchPlugins = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/v1/plugins');
+      const res = await fetch(`${API_URL}/api/v1/plugins`, {
+        credentials: 'include',
+      });
       const data = await res.json();
       if (Array.isArray(data)) {
         setExternalPlugins(data);
+        router.refresh();
+        window.dispatchEvent(new Event('dboke_plugins_updated'));
       }
     } catch (e) {
       console.error("Failed to fetch plugins", e);
@@ -40,34 +49,71 @@ export default function PluginsPage() {
   };
 
   const handleUpload = async () => {
-    if (!pluginName || !selectedFile) {
-      alert("Please provide a name and select a plugin executable.");
+    if (!selectedFile) {
+      alert("Please select a plugin executable.");
       return;
     }
 
     setUploading(true);
+    setTaskProgress(0);
+    setTaskMessage("Uploading...");
     const formData = new FormData();
-    formData.append("name", pluginName);
     formData.append("executable", selectedFile);
 
     try {
-      const res = await fetch("http://localhost:8080/api/v1/plugins/upload", {
+      const csrf = localStorage.getItem('dboke_csrf_token') || '';
+      const res = await fetch(`${API_URL}/api/v1/plugins/upload`, {
         method: "POST",
         body: formData,
+        headers: {
+          'X-CSRF-Token': csrf
+        },
+        credentials: 'include',
       });
       const data = await res.json();
       
-      if (res.ok) {
+      if (res.status === 202 && data.task_id) {
+        // Polling loop
+        const taskId = data.task_id;
+        const pollInterval = setInterval(async () => {
+          try {
+            const taskRes = await fetch(`${API_URL}/api/v1/tasks/${taskId}`, { credentials: 'include' });
+            const taskData = await taskRes.json();
+            
+            if (taskRes.ok) {
+              setTaskProgress(taskData.progress);
+              setTaskMessage(taskData.message);
+              
+              if (taskData.status === "completed") {
+                clearInterval(pollInterval);
+                setUploading(false);
+                setIsModalOpen(false);
+                setSelectedFile(null);
+                setTaskProgress(0);
+                setTaskMessage("");
+                fetchPlugins(); // Refresh the list
+              } else if (taskData.status === "failed") {
+                clearInterval(pollInterval);
+                setUploading(false);
+                alert("Installation failed: " + (taskData.error || taskData.message));
+              }
+            }
+          } catch (e) {
+            console.error("Polling error", e);
+          }
+        }, 500);
+      } else if (res.ok) {
+        // Fallback if not using task queue (e.g. synchronous fallback)
         setIsModalOpen(false);
-        setPluginName("");
         setSelectedFile(null);
-        fetchPlugins(); // Refresh the list
+        fetchPlugins();
+        setUploading(false);
       } else {
-        alert("Upload failed: " + data.error);
+        alert("Upload failed: " + (data.message || data.error));
+        setUploading(false);
       }
     } catch (err: any) {
       alert("Error: " + err.message);
-    } finally {
       setUploading(false);
     }
   };
@@ -91,19 +137,6 @@ export default function PluginsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
-                  Plugin Name
-                </label>
-                <input 
-                  type="text" 
-                  value={pluginName}
-                  onChange={(e) => setPluginName(e.target.value)}
-                  placeholder="e.g. Visual Query Builder"
-                  className="w-full px-3 py-2 bg-gray-50 dark:bg-black border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-shadow"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">
                   Plugin Bundle (.zip)
                 </label>
                 <div className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-lg transition-colors bg-gray-50 dark:bg-black/50 group ${selectedFile ? 'border-green-500 dark:border-green-400' : 'border-gray-300 dark:border-gray-700 hover:border-black dark:hover:border-white'}`}>
@@ -124,13 +157,32 @@ export default function PluginsPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Progress Bar UI */}
+              {uploading && (
+                <div className="mt-4 p-4 border border-gray-200 dark:border-gray-800 rounded-lg bg-gray-50 dark:bg-gray-900/50 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      {taskMessage || 'Processing...'}
+                    </span>
+                    <span className="text-xs font-semibold text-gray-500">
+                      {taskProgress}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-black dark:bg-white h-2 rounded-full transition-all duration-300 ease-out" 
+                      style={{ width: `${taskProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-8 flex justify-end gap-3">
               <button 
                 onClick={() => {
                   setIsModalOpen(false);
-                  setPluginName("");
                   setSelectedFile(null);
                 }}
                 disabled={uploading}
@@ -141,8 +193,14 @@ export default function PluginsPage() {
               <button 
                 onClick={handleUpload}
                 disabled={uploading}
-                className="px-4 py-2 bg-black text-white dark:bg-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-md disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-black text-white dark:bg-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-md disabled:opacity-50"
               >
+                {uploading && (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                )}
                 {uploading ? 'Installing...' : 'Install Plugin'}
               </button>
             </div>
@@ -269,8 +327,14 @@ export default function PluginsPage() {
                   )}
                   <button 
                     onClick={async () => {
-                      await fetch(`http://localhost:8080/api/v1/plugins/${plugin.id}/toggle`, { method: 'POST' });
+                      const csrf = localStorage.getItem('dboke_csrf_token') || '';
+                      await fetch(`${API_URL}/api/v1/plugins/${plugin.id}/toggle`, { 
+                        method: 'POST', 
+                        headers: { 'X-CSRF-Token': csrf },
+                        credentials: 'include' 
+                      });
                       fetchPlugins();
+                      router.refresh();
                     }}
                     className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                   >
@@ -279,8 +343,14 @@ export default function PluginsPage() {
                   <button 
                     onClick={async () => {
                       if(confirm('Are you sure you want to completely delete this plugin?')) {
-                        await fetch(`http://localhost:8080/api/v1/plugins/${plugin.id}`, { method: 'DELETE' });
+                        const csrf = localStorage.getItem('dboke_csrf_token') || '';
+                        await fetch(`${API_URL}/api/v1/plugins/${plugin.id}`, { 
+                          method: 'DELETE', 
+                          headers: { 'X-CSRF-Token': csrf },
+                          credentials: 'include' 
+                        });
                         fetchPlugins();
+                        router.refresh();
                       }
                     }}
                     className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors ml-auto"

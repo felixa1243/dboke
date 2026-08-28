@@ -81,6 +81,9 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 		protected.Post("/api/v1/plugins/{id}/toggle", pluginHandler.TogglePlugin)
 		protected.Delete("/api/v1/plugins/{id}", pluginHandler.DeletePlugin)
 		
+		// Tasks
+		protected.Get("/api/v1/tasks/{id}", pluginHandler.GetTaskStatus)
+		
 		// Plugin Execution
 		protected.Post("/api/v1/databases/{database}/plugins/{id}/execute", pluginHandler.ExecutePluginQuery)
 

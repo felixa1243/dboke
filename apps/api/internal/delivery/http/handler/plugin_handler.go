@@ -16,6 +16,7 @@ import (
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/pkg/contextkeys"
 	"dboke-api/internal/pkg/response"
+	"dboke-api/internal/pkg/taskqueue"
 	"github.com/go-chi/chi/v5"
 	"log/slog"
 )
@@ -39,22 +40,13 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
-		http.Error(w, `{"error": "File too large or invalid multipart data"}`, http.StatusBadRequest)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "File too large or invalid multipart data")
 		return
 	}
 
-	pluginName := r.FormValue("name")
-	if pluginName == "" {
-		http.Error(w, `{"error": "Plugin name is required"}`, http.StatusBadRequest)
-		return
-	}
-
-	// Format plugin folder name (e.g., "Visual Query" -> "visual-query")
-	folderName := strings.ToLower(strings.ReplaceAll(pluginName, " ", "-"))
-
-	file, header, err := r.FormFile("executable") // Frontend still sends it under this key
+	file, header, err := r.FormFile("executable")
 	if err != nil {
-		http.Error(w, `{"error": "Zip file is required"}`, http.StatusBadRequest)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Zip file is required")
 		return
 	}
 	defer file.Close()
@@ -63,37 +55,70 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 	// Target directory: apps/plugins
 	pluginsDir := filepath.Join(cwd, "..", "plugins")
 	if err := os.MkdirAll(pluginsDir, 0755); err != nil {
-		http.Error(w, `{"error": "Failed to create plugins directory"}`, http.StatusInternalServerError)
+		response.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create plugins directory")
 		return
 	}
 
 	tempZipPath := filepath.Join(pluginsDir, header.Filename)
 	dst, err := os.Create(tempZipPath)
 	if err != nil {
-		http.Error(w, `{"error": "Failed to create temp zip file"}`, http.StatusInternalServerError)
+		response.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create temp zip file")
 		return
 	}
 	
 	if _, err := io.Copy(dst, file); err != nil {
 		dst.Close()
-		http.Error(w, `{"error": "Failed to write temp zip data"}`, http.StatusInternalServerError)
+		response.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to write temp zip data")
 		return
 	}
 	dst.Close()
 
+	// Extract meta.json
+	rZip, err := zip.OpenReader(tempZipPath)
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid zip file")
+		return
+	}
+	
+	var meta struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	metaFound := false
+	for _, f := range rZip.File {
+		if f.Name == "meta.json" {
+			rc, _ := f.Open()
+			json.NewDecoder(rc).Decode(&meta)
+			rc.Close()
+			metaFound = true
+			break
+		}
+	}
+	rZip.Close()
+
+	if !metaFound || meta.ID == "" {
+		os.Remove(tempZipPath)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "meta.json with 'id' is required in the plugin bundle")
+		return
+	}
+
+	folderName := meta.ID
 	pluginInstallDir := filepath.Join(pluginsDir, folderName)
 
-	// Launch Background Task (Goroutine) to install
-	go func() {
+	taskId := taskqueue.EnqueueTask("Starting installation...", func(taskId string) {
 		defer os.Remove(tempZipPath) // Always clean up the temp zip
 
-		// Unzip logic
-		err := unzipFile(tempZipPath, pluginInstallDir)
+		taskqueue.UpdateTask(taskId, taskqueue.StatusProcessing, 10, "Extracting plugin files...", "")
+		
+		err = unzipFile(tempZipPath, pluginInstallDir)
 		if err != nil {
-			fmt.Printf("Background Plugin Install Failed for %s: %v\n", pluginName, err)
+			fmt.Printf("Plugin Install Failed for %s: %v\n", meta.Name, err)
+			taskqueue.UpdateTask(taskId, taskqueue.StatusFailed, 10, "Failed to extract plugin", err.Error())
 			return
 		}
 		
+		taskqueue.UpdateTask(taskId, taskqueue.StatusProcessing, 50, "Copying frontend assets...", "")
+
 		// Dynamic routing hack for Next.js App Router!
 		// Move frontend folder directly to Next.js app directory to hot-reload the React pages
 		frontendSrc := filepath.Join(pluginInstallDir, "frontend")
@@ -108,13 +133,28 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 			os.RemoveAll(frontendSrc)
 		}
 
-		fmt.Printf("Successfully installed plugin %s to %s\n", pluginName, pluginInstallDir)
-	}()
+		taskqueue.UpdateTask(taskId, taskqueue.StatusCompleted, 100, "Installation complete!", "")
+		fmt.Printf("Successfully installed plugin %s to %s\n", meta.Name, pluginInstallDir)
+	})
 
+	w.WriteHeader(http.StatusAccepted)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Plugin zip uploaded successfully. Installation started in the background.",
+		"message": "Plugin zip uploaded successfully. Installation started.",
+		"task_id": taskId,
 	})
+}
+
+// GetTaskStatus handles checking the status of a background task
+func (h *PluginHandler) GetTaskStatus(w http.ResponseWriter, r *http.Request) {
+	taskId := chi.URLParam(r, "id")
+	task, ok := taskqueue.GetTask(taskId)
+	if !ok {
+		response.WriteError(w, http.StatusNotFound, "NOT_FOUND", "Task not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(task)
 }
 
 // Helper to extract zip files safely
@@ -138,9 +178,9 @@ func unzipFile(src, dest string) error {
 			return fmt.Errorf("illegal file path: %s", path)
 		}
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(path, f.Mode())
+			os.MkdirAll(path, 0755)
 		} else {
-			os.MkdirAll(filepath.Dir(path), f.Mode())
+			os.MkdirAll(filepath.Dir(path), 0755)
 			fOut, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 			if err != nil {
 				return err
@@ -175,14 +215,33 @@ func (h *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
 		Type        string `json:"type"`
 	}
 
-	var plugins []PluginInfo
+	plugins := []PluginInfo{}
 
 	files, err := os.ReadDir(pluginsDir)
 	if err == nil {
 		for _, file := range files {
 			if file.IsDir() {
+				// Default values
 				displayName := strings.Title(strings.ReplaceAll(file.Name(), "-", " "))
+				description := "Plugin bundle containing backend logic and frontend assets."
 				
+				// Try to read meta.json
+				metaPath := filepath.Join(pluginsDir, file.Name(), "meta.json")
+				if metaData, err := ioutil.ReadFile(metaPath); err == nil {
+					var meta struct {
+						Name        string `json:"name"`
+						Description string `json:"description"`
+					}
+					if json.Unmarshal(metaData, &meta) == nil {
+						if meta.Name != "" {
+							displayName = meta.Name
+						}
+						if meta.Description != "" {
+							description = meta.Description
+						}
+					}
+				}
+
 				status := "Active"
 				if _, err := os.Stat(filepath.Join(pluginsDir, file.Name(), ".disabled")); err == nil {
 					status = "Inactive"
@@ -192,7 +251,7 @@ func (h *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
 					Id:          file.Name(),
 					Name:        displayName,
 					Status:      status,
-					Description: "Plugin bundle containing backend logic and frontend assets.",
+					Description: description,
 					Type:        "external",
 				})
 			}
@@ -207,7 +266,7 @@ func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
 	// Get plugin ID from path
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 {
-		http.Error(w, "Invalid plugin ID", http.StatusBadRequest)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid plugin ID")
 		return
 	}
 	pluginId := parts[4]
@@ -235,7 +294,7 @@ func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
 func (h *PluginHandler) DeletePlugin(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 { // /api/v1/plugins/{id}
-		http.Error(w, "Invalid plugin ID", http.StatusBadRequest)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid plugin ID")
 		return
 	}
 	pluginId := parts[4]
