@@ -44,12 +44,12 @@ jobs:
 
       - name: Build Web Frontend
         run: |
-          cd apps/web
           npm ci
-          npm run build
+          npm run build -w apps/web
+          npm run build -w apps/landing
+          
           # The built frontend is in apps/web/.next, but typically you need the standalone output or the source to run Next.js
           # For a complete release bundle, we will zip the built Go binaries and the Next.js frontend code
-          cd ../../
           
           # Create bundles
           mkdir -p release-bundle/windows release-bundle/linux release-bundle/macos
