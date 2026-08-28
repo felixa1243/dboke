@@ -118,8 +118,14 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
             Plugins
           </Link>
-          <button className="w-full py-2 mb-3 text-xs font-semibold uppercase tracking-widest border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white rounded-md transition-colors">
-            New Database
+          <button 
+            onClick={() => {
+              setIsSidebarOpen(false);
+              router.push('/');
+            }}
+            className="w-full py-2 mb-3 text-xs font-semibold uppercase tracking-widest border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white rounded-md transition-colors"
+          >
+            Connection Manager
           </button>
           <LogoutButton />
         </div>
