@@ -78,6 +78,8 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 
 		protected.Get("/api/v1/databases", dbHandler.GetDatabases)
 		protected.Get("/api/v1/databases/{database}/tables", dbHandler.GetTables)
+		protected.Get("/api/v1/databases/{database}/tables/{table}/columns", dbHandler.GetTableSchema)
+		protected.Post("/api/v1/databases/{database}/query", dbHandler.ExecuteQuery)
 
 		// Example hooks for future handlers:
 		// protected.Post("/api/v1/db/connect", connectDBHandler)

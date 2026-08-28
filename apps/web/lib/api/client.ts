@@ -7,13 +7,22 @@ export class ApiError extends Error {
 }
 
 export async function apiClient<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> || {}),
+  };
+
+  if (typeof window !== 'undefined') {
+    const csrf = localStorage.getItem('dboke_csrf_token');
+    if (csrf) {
+      headers['X-CSRF-Token'] = csrf;
+    }
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   });
   
   if (!res.ok) {

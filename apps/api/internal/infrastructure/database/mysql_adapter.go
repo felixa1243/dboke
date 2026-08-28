@@ -107,5 +107,56 @@ func (m *MySQLAdapter) UpdateRow(ctx context.Context, update domain.UpdateQuery)
 }
 
 func (m *MySQLAdapter) ExecuteRaw(ctx context.Context, query string, params ...interface{}) (*domain.ResultSet, error) {
-	return nil, fmt.Errorf("ExecuteRaw not fully implemented for MySQL yet")
+	rows, err := m.db.QueryContext(ctx, query, params...)
+	if err != nil {
+		// Fallback for DML queries that might not return rows in some driver configurations
+		res, execErr := m.db.ExecContext(ctx, query, params...)
+		if execErr != nil {
+			return nil, err // Return original error
+		}
+		affected, _ := res.RowsAffected()
+		return &domain.ResultSet{
+			Columns: []string{"rows_affected"},
+			Rows:    []map[string]interface{}{{"rows_affected": affected}},
+		}, nil
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+	for rows.Next() {
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, err
+		}
+
+		rowMap := make(map[string]interface{})
+		for i, colName := range cols {
+			val := columnPointers[i].(*interface{})
+			if val == nil {
+				rowMap[colName] = nil
+				continue
+			}
+			if b, ok := (*val).([]byte); ok {
+				rowMap[colName] = string(b)
+			} else {
+				rowMap[colName] = *val
+			}
+		}
+		results = append(results, rowMap)
+	}
+
+	return &domain.ResultSet{
+		Columns: cols,
+		Rows:    results,
+	}, nil
 }

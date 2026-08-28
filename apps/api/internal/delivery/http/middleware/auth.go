@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"log/slog"
 	"dboke-api/internal/core/ports"
 	"dboke-api/internal/pkg/contextkeys"
 	"dboke-api/internal/pkg/response"
@@ -30,6 +31,12 @@ func AuthMiddleware(sessionStore ports.ISessionStore) func(http.Handler) http.Ha
 			if r.Method != http.MethodGet && r.Method != http.MethodOptions {
 				csrfHeader := r.Header.Get("X-CSRF-Token")
 				if csrfHeader == "" || csrfHeader != session.CSRFToken { 
+					slog.Warn("CSRF Validation Failed", 
+						slog.String("method", r.Method),
+						slog.String("path", r.URL.Path),
+						slog.String("received_csrf", csrfHeader),
+						slog.String("expected_csrf", session.CSRFToken),
+					)
 					response.WriteError(w, http.StatusForbidden, "CSRF_FAILED", "Missing or invalid CSRF token")
 					return
 				}

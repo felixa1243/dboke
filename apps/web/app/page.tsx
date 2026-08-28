@@ -71,12 +71,15 @@ export default function WorkspacePage() {
     setLoading(true);
     setError('');
     try {
-      await authApi.login({ 
+      const res = await authApi.login({ 
         dbType: profile.dbType, 
         port: profile.port, 
         username: profile.username, 
         password: overridePassword || password 
       });
+      if (res.csrfToken) {
+        localStorage.setItem('dboke_csrf_token', res.csrfToken);
+      }
       router.push('/databases');
     } catch (err: any) {
       setError(err.message || 'Connection failed');

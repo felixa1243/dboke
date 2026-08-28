@@ -43,6 +43,6 @@ type UpdateQuery struct {
 
 // ResultSet represents the data returned from a query
 type ResultSet struct {
-	Columns []string
-	Rows    []map[string]interface{}
+	Columns []string                   `json:"columns"`
+	Rows    []map[string]interface{}   `json:"rows"`
 }

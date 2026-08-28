@@ -13,17 +13,20 @@ Dboke is a highly secure, modern web-based database management tool built with a
 ### 🛡️ Enterprise-Grade Security
 - **AES-256-GCM Encryption:** Database credentials are symmetrically encrypted in-memory and bound directly to user sessions. No plaintext passwords are ever stored.
 - **Zero-Trust Sessions:** Cryptographically secure 32-byte session IDs via HTTP-Only, SameSite=Lax cookies.
-- **CSRF Protection:** Strict `X-CSRF-Token` header validation for all state-changing API endpoints.
+- **CSRF Protection:** Strict `X-CSRF-Token` header validation for all state-changing API endpoints, seamlessly integrated with multi-tab session persistence.
 
 ### 🏗️ Architecture & Backend
 - **Golang Clean Architecture:** Strict separation of concerns (Delivery, Services, Domain, Infrastructure).
 - **Dynamic Connection Pooling:** Isolated `pgx/v5` connection pools spawned dynamically per database context.
-- **Live Schema Introspection:** Real-time extraction of Postgres database schemas, including dynamic metric aggregation for precise row counts and data footprint sizes.
+- **Universal SQL Execution:** Robust raw SQL (DQL/DML) execution with automatic, dialect-agnostic pagination (via subquery limits and offsets).
+- **Live Schema Introspection:** Real-time extraction of Postgres/MySQL schemas, including table structures, primary keys, exact row counts, and data footprint sizes.
 
-### 🎨 Frontend Excellence
-- **Next.js 14 App Router:** Highly optimized, SEO-friendly React framework.
-- **Tailwind CSS v4 & Zustand:** Premium glassmorphism UI, robust local state management, and seamless Light/Dark mode toggling.
-- **Responsive Layout:** Sidebar-driven navigation with dynamic routing and micro-interactions.
+### 🎨 Frontend Excellence & Workspace
+- **Multi-Connection Manager:** Manage multiple active local/remote databases in a single sidebar workspace without dropping sessions.
+- **Interactive SQL Console:** Fully featured query editor with table/schema exploration tree, one-click column injection, and intelligent data grids.
+- **Smart Pagination & Results:** Custom limit controls (e.g., fetch 200 rows) with infinite-scroll style "Fetch Next" mechanics for massive result sets.
+- **Saved Queries Workspace:** Instantly save, name, and recall complex SQL scripts directly in the console sidebar via persistent local storage.
+- **Next.js 14 & Tailwind CSS v4:** Premium glassmorphism UI, robust Zustand state management, and seamless Light/Dark mode toggling.
 
 ### 🧩 Dynamic Plugin Ecosystem
 - **Full-Stack Bundles:** Create standalone `.zip` plugins that bundle a Go backend binary (via HashiCorp `go-plugin` gRPC) and a Next.js `page.tsx` frontend.
