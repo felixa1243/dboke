@@ -33,13 +33,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd apps/landing
+          rm -f package-lock.json
           npm install
           
       - name: Build with Next.js
         run: |
-          cd apps/landing
-          npm run build
+          npm run build -w apps/landing
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
