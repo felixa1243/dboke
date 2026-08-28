@@ -48,3 +48,12 @@ vendor/
 *.sln
 *.sw?
 architecture_review.md
+
+# Installed Plugins (Runtime)
+/apps/plugins/
+
+# External Plugins Source (Maintained in separate repo)
+/plugins/*
+!/plugins/shared/
+!/plugins/go.mod
+!/plugins/build.go

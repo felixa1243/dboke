@@ -22,6 +22,7 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	dbHandler := handler.NewDBHandler(dbService)
+	pluginHandler := handler.NewPluginHandler()
 
 	// 1. Core structural middleware
 	r.Use(middleware.RequestID)
@@ -54,6 +55,12 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 		// Setup auth routes
 		public.Post("/api/v1/auth/login", authHandler.Login)
 		public.Post("/api/v1/auth/logout", authHandler.Logout)
+
+		// Plugin Management
+		public.Post("/api/v1/plugins/upload", pluginHandler.UploadPlugin)
+		public.Get("/api/v1/plugins", pluginHandler.ListPlugins)
+		public.Post("/api/v1/plugins/{id}/toggle", pluginHandler.TogglePlugin)
+		public.Delete("/api/v1/plugins/{id}", pluginHandler.DeletePlugin)
 	})
 
 	// 4. Protected Routes Group (Database Management, Raw SQL)

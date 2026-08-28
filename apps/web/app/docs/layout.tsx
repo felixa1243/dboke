@@ -21,6 +21,18 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
               Getting Started
             </Link>
             <Link 
+              href="/docs/security"
+              className="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded-md transition-colors"
+            >
+              Security Architecture
+            </Link>
+            <Link 
+              href="/docs/plugins"
+              className="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded-md transition-colors"
+            >
+              Plugin Development
+            </Link>
+            <Link 
               href="/docs/deployment"
               className="block px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded-md transition-colors"
             >

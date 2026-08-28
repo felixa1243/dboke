@@ -25,6 +25,11 @@ Dboke is a highly secure, modern web-based database management tool built with a
 - **Tailwind CSS v4 & Zustand:** Premium glassmorphism UI, robust local state management, and seamless Light/Dark mode toggling.
 - **Responsive Layout:** Sidebar-driven navigation with dynamic routing and micro-interactions.
 
+### 🧩 Dynamic Plugin Ecosystem
+- **Full-Stack Bundles:** Create standalone `.zip` plugins that bundle a Go backend binary (via HashiCorp `go-plugin` gRPC) and a Next.js `page.tsx` frontend.
+- **Native Hot-Reloading:** Uploaded plugins automatically inject their React components directly into the Next.js App Router for instant, native rendering.
+- **Lifecycle Management:** Activate, deactivate (which safely `404`s the route), or permanently delete plugins directly from the UI without touching the core codebase or restarting the server.
+
 ## Prerequisites
 
 - **Go** 1.21+

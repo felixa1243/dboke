@@ -21,6 +21,10 @@ func NewPostgresAdapter() ports.IDBAdapter {
 	return &PostgresAdapter{}
 }
 
+func init() {
+	RegisterAdapter("pgsql", NewPostgresAdapter)
+}
+
 // Connect initializes the connection pool to the PostgreSQL database
 func (p *PostgresAdapter) Connect(ctx context.Context, config domain.DBConnectionConfig) error {
 	// Construct the Data Source Name (DSN)

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"dboke-api/internal/core/domain"
-	"dboke-api/internal/core/ports"
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/delivery/http/router"
 	"dboke-api/internal/infrastructure/database"
@@ -66,12 +65,11 @@ func (m *InMemorySessionStore) ExtendSession(ctx context.Context, sessionID stri
 	return nil
 }
 
-
 func main() {
 	// Attempt to load .env from common locations
 	err1 := godotenv.Load("../../.env")
 	err2 := godotenv.Load(".env")
-	
+
 	if err1 != nil && err2 != nil {
 		slog.Warn("No .env file found in common locations, falling back to system environment variables")
 	}
@@ -86,11 +84,8 @@ func main() {
 	// 1. Initialize Infrastructure (e.g. Session Store, Internal DB)
 	sessionStore := NewInMemorySessionStore()
 
-	// Initialize Database Adapters
-	adapterFactories := map[string]func() ports.IDBAdapter{
-		"pgsql": func() ports.IDBAdapter { return database.NewPostgresAdapter() },
-		// Future adapters go here
-	}
+	// Initialize Database Adapters from Registry
+	adapterFactories := database.GetAdapterFactories()
 
 	// 2. Initialize Core Services
 	authService := services.NewAuthService(sessionStore, adapterFactories)
@@ -116,16 +111,16 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	
+
 	<-stop
 	slog.Info("Shutting down API server gracefully...")
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("Server forced to shutdown", slog.String("error", err.Error()))
 	}
-	
+
 	slog.Info("Server stopped")
 }

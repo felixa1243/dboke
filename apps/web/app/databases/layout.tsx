@@ -11,6 +11,7 @@ import { SidebarTree } from "../../components/SidebarTree";
 export default function DatabasesLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [databases, setDatabases] = useState<string[]>([]);
+  const [plugins, setPlugins] = useState<{id: string, name: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -19,6 +20,20 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
       try {
         const res = await databasesApi.getDatabases();
         setDatabases(res.databases);
+
+        // Fetch plugins for the sidebar
+        try {
+          const pluginsRes = await fetch('http://localhost:8080/api/v1/plugins');
+          if (pluginsRes.ok) {
+            const pluginsData = await pluginsRes.json();
+            if (Array.isArray(pluginsData)) {
+              setPlugins(pluginsData.filter((p: any) => p.status === 'Active'));
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load plugins in sidebar:", e);
+        }
+
       } catch (err: any) {
         if (err.status === 401 || err.status === 403) {
           router.push('/');
@@ -58,17 +73,52 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
         </div>
         
         <div className="flex-1 overflow-x-hidden overflow-y-auto pb-4">
+          <div className="px-5 pt-4 pb-2">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Databases</span>
+          </div>
           {loading ? (
-            <div className="px-6 py-4 text-sm text-gray-500">Loading databases...</div>
+            <div className="px-6 py-4 text-sm text-gray-500">Loading...</div>
           ) : databases.length > 0 ? (
             <SidebarTree databases={databases} onNavigate={() => setIsSidebarOpen(false)} />
           ) : (
             <div className="px-6 py-4 text-sm text-gray-500">No databases found</div>
           )}
+
+          {/* Dynamically injected plugins */}
+          {plugins.length > 0 && (
+            <>
+              <div className="px-5 pt-6 pb-2">
+                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">External Tools</span>
+              </div>
+              <div className="px-3 space-y-1">
+                {plugins.map(p => (
+                  <Link 
+                    key={p.id}
+                    href={`/databases/plugins/${p.id}`}
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded-lg transition-colors"
+                  >
+                    <div className="w-5 h-5 flex items-center justify-center bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                    </div>
+                    <span className="truncate">{p.name}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         
         <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-          <button className="w-full py-2 text-xs font-semibold uppercase tracking-widest border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white rounded-md transition-colors">
+          <Link 
+            href="/databases/plugins" 
+            className="flex items-center gap-3 w-full py-2 mb-3 px-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-all"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            Plugins
+          </Link>
+          <button className="w-full py-2 mb-3 text-xs font-semibold uppercase tracking-widest border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white rounded-md transition-colors">
             New Database
           </button>
           <LogoutButton />
