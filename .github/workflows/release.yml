@@ -44,7 +44,7 @@ jobs:
 
       - name: Build Web Frontend
         run: |
-          npm ci
+          npm install
           npm run build -w apps/web
           npm run build -w apps/landing
           
