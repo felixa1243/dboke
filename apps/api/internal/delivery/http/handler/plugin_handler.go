@@ -2,6 +2,7 @@ package handler
 
 import (
 	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,19 +10,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+	"io/ioutil"
+
+	"dboke-api/internal/core/services"
+	"dboke-api/internal/pkg/contextkeys"
+	"dboke-api/internal/pkg/response"
+	"github.com/go-chi/chi/v5"
+	"log/slog"
 )
 
-type PluginHandler struct{}
+type PluginHandler struct {
+	pluginManager *services.PluginManager
+	dbService     *services.DBService
+}
 
-func NewPluginHandler() *PluginHandler {
-	return &PluginHandler{}
+func NewPluginHandler(pluginManager *services.PluginManager, dbService *services.DBService) *PluginHandler {
+	return &PluginHandler{
+		pluginManager: pluginManager,
+		dbService:     dbService,
+	}
 }
 
 func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -152,10 +163,6 @@ func unzipFile(src, dest string) error {
 }
 
 func (h *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-	
 	cwd, _ := os.Getwd()
 	// Read from apps/plugins
 	pluginsDir := filepath.Join(cwd, "..", "plugins")
@@ -197,9 +204,6 @@ func (h *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
 	// Get plugin ID from path
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 {
@@ -229,9 +233,6 @@ func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PluginHandler) DeletePlugin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
-
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 5 { // /api/v1/plugins/{id}
 		http.Error(w, "Invalid plugin ID", http.StatusBadRequest)
@@ -261,13 +262,77 @@ func copyDir(src string, dst string) error {
 		if info.IsDir() {
 			return os.MkdirAll(dstPath, info.Mode())
 		}
-		srcFile, _ := os.Open(path)
+		srcFile, err := os.Open(path)
+		if err != nil {
+			return err
+		}
 		defer srcFile.Close()
-		dstFile, _ := os.Create(dstPath)
+		
+		dstFile, err := os.Create(dstPath)
+		if err != nil {
+			return err
+		}
 		defer dstFile.Close()
-		io.Copy(dstFile, srcFile)
+		
+		if _, err := io.Copy(dstFile, srcFile); err != nil {
+			return err
+		}
 		return nil
 	})
+}
+
+func (h *PluginHandler) ExecutePluginQuery(w http.ResponseWriter, r *http.Request) {
+	pluginID := chi.URLParam(r, "id")
+	database := chi.URLParam(r, "database")
+	
+	sessionID, ok := r.Context().Value(contextkeys.SessionIDKey).(string)
+	if !ok || sessionID == "" {
+		response.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
+		return
+	}
+
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Failed to read request body")
+		return
+	}
+
+	// 1. Get the Plugin Feature
+	feature, err := h.pluginManager.GetFeature(pluginID)
+	if err != nil {
+		slog.Error("Failed to get plugin feature", slog.String("error", err.Error()))
+		response.WriteError(w, http.StatusInternalServerError, "PLUGIN_ERROR", "Failed to load plugin logic")
+		return
+	}
+
+	// 2. Ask Plugin to Build Query
+	sqlQuery, err := feature.BuildQuery(string(body))
+	if err != nil {
+		slog.Error("Plugin failed to build query", slog.String("error", err.Error()))
+		response.WriteError(w, http.StatusInternalServerError, "PLUGIN_ERROR", err.Error())
+		return
+	}
+
+	// 3. Execute the built query against the database
+	adapter, err := h.dbService.GetAdapter(r.Context(), sessionID, database)
+	if err != nil {
+		slog.Error("Failed to get adapter", slog.String("error", err.Error()))
+		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", "Database connection failed")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	rs, err := adapter.ExecuteRaw(ctx, sqlQuery)
+	if err != nil {
+		slog.Error("Failed to execute plugin query", slog.String("error", err.Error()))
+		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(rs)
 }
 
 

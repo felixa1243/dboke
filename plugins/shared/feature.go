@@ -5,6 +5,18 @@ import (
 	"github.com/hashicorp/go-plugin"
 )
 
+// Handshake is a common handshake that is shared by plugin and host.
+var HandshakeConfig = plugin.HandshakeConfig{
+	ProtocolVersion:  1,
+	MagicCookieKey:   "DBOKE_PLUGIN",
+	MagicCookieValue: "hello",
+}
+
+// PluginMap is the map of plugins we can dispense.
+var PluginMap = map[string]plugin.Plugin{
+	"feature": &FeaturePlugin{},
+}
+
 // Feature is the interface that we're exposing as a plugin.
 // Both the Dboke main app and the plugins will use this interface.
 type Feature interface {

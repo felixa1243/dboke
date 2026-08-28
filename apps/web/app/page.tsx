@@ -9,6 +9,7 @@ interface ConnectionProfile {
   id: string;
   name: string;
   dbType: string;
+  host: string;
   port: string;
   username: string;
 }
@@ -22,6 +23,7 @@ export default function WorkspacePage() {
   // Form State
   const [connName, setConnName] = useState('');
   const [dbType, setDbType] = useState('pgsql');
+  const [host, setHost] = useState('localhost');
   const [port, setPort] = useState('5432');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -73,6 +75,7 @@ export default function WorkspacePage() {
     try {
       const res = await authApi.login({ 
         dbType: profile.dbType, 
+        host: profile.host || 'localhost',
         port: profile.port, 
         username: profile.username, 
         password: overridePassword || password 
@@ -94,6 +97,7 @@ export default function WorkspacePage() {
       id: Date.now().toString(),
       name: connName || `${dbType} connection`,
       dbType,
+      host,
       port,
       username,
     };
@@ -239,7 +243,7 @@ export default function WorkspacePage() {
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2 space-y-1">
                         <label className="text-xs font-semibold uppercase tracking-widest text-gray-500">Host</label>
-                        <input type="text" defaultValue="localhost" className="w-full p-2 text-sm border-b border-gray-300 dark:border-gray-700 focus:border-black dark:focus:border-white outline-none bg-transparent" required />
+                        <input type="text" value={host} onChange={e => setHost(e.target.value)} className="w-full p-2 text-sm border-b border-gray-300 dark:border-gray-700 focus:border-black dark:focus:border-white outline-none bg-transparent" required />
                       </div>
                       <div className="col-span-1 space-y-1">
                         <label className="text-xs font-semibold uppercase tracking-widest text-gray-500">Port</label>

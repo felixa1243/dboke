@@ -2,6 +2,7 @@ import { apiClient } from './client';
 
 export interface LoginParams {
   dbType: string;
+  host: string;
   port: string;
   username: string;
   password?: string;

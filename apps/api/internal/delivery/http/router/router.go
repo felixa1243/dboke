@@ -16,13 +16,13 @@ import (
 )
 
 // NewRouter initializes the HTTP router with middleware and route definitions
-func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthService, dbService *services.DBService) *chi.Mux {
+func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthService, dbService *services.DBService, pluginManager *services.PluginManager) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	dbHandler := handler.NewDBHandler(dbService)
-	pluginHandler := handler.NewPluginHandler()
+	pluginHandler := handler.NewPluginHandler(pluginManager, dbService)
 
 	// 1. Core structural middleware
 	r.Use(middleware.RequestID)
@@ -52,15 +52,9 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 			w.Write([]byte("Dboke API Server is operational"))
 		})
 		
-		// Setup auth routes
-		public.Post("/api/v1/auth/login", authHandler.Login)
+		// Setup auth routes with rate limiting
+		public.With(customMiddleware.RateLimit).Post("/api/v1/auth/login", authHandler.Login)
 		public.Post("/api/v1/auth/logout", authHandler.Logout)
-
-		// Plugin Management
-		public.Post("/api/v1/plugins/upload", pluginHandler.UploadPlugin)
-		public.Get("/api/v1/plugins", pluginHandler.ListPlugins)
-		public.Post("/api/v1/plugins/{id}/toggle", pluginHandler.TogglePlugin)
-		public.Delete("/api/v1/plugins/{id}", pluginHandler.DeletePlugin)
 	})
 
 	// 4. Protected Routes Group (Database Management, Raw SQL)
@@ -80,6 +74,15 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 		protected.Get("/api/v1/databases/{database}/tables", dbHandler.GetTables)
 		protected.Get("/api/v1/databases/{database}/tables/{table}/columns", dbHandler.GetTableSchema)
 		protected.Post("/api/v1/databases/{database}/query", dbHandler.ExecuteQuery)
+
+		// Plugin Management
+		protected.Post("/api/v1/plugins/upload", pluginHandler.UploadPlugin)
+		protected.Get("/api/v1/plugins", pluginHandler.ListPlugins)
+		protected.Post("/api/v1/plugins/{id}/toggle", pluginHandler.TogglePlugin)
+		protected.Delete("/api/v1/plugins/{id}", pluginHandler.DeletePlugin)
+		
+		// Plugin Execution
+		protected.Post("/api/v1/databases/{database}/plugins/{id}/execute", pluginHandler.ExecutePluginQuery)
 
 		// Example hooks for future handlers:
 		// protected.Post("/api/v1/db/connect", connectDBHandler)

@@ -7,7 +7,10 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
+	dboke-plugins v0.0.0
 )
+
+replace dboke-plugins => ../../plugins
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

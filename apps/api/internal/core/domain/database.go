@@ -19,10 +19,10 @@ type TableMetadata struct {
 
 // ColumnMetadata holds information about a specific column in a table
 type ColumnMetadata struct {
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	IsNullable bool   `json:"is_nullable"`
-	IsPrimaryKey bool `json:"is_primary_key"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	IsNullable   bool   `json:"isNullable"`
+	IsPrimaryKey bool   `json:"isPrimaryKey"`
 }
 
 // SelectQuery represents a structured, safe query to fetch rows

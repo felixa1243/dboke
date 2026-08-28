@@ -37,4 +37,10 @@ export const databasesApi = {
       body: JSON.stringify({ query, params, limit, offset }),
     });
   },
+  executePluginQuery: (database: string, pluginId: string, payload: any) => {
+    return apiClient<any>(`/api/v1/databases/${database}/plugins/${pluginId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };

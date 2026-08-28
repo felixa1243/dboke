@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ThemeToggle } from "../../components/ThemeToggle";
 import { LogoutButton } from "../../components/LogoutButton";
 import { databasesApi } from "../../lib/api/databases";
+import { apiClient } from "../../lib/api/client";
 import { SidebarTree } from "../../components/SidebarTree";
 
 export default function DatabasesLayout({ children }: { children: React.ReactNode }) {
@@ -23,12 +24,9 @@ export default function DatabasesLayout({ children }: { children: React.ReactNod
 
         // Fetch plugins for the sidebar
         try {
-          const pluginsRes = await fetch('http://localhost:8080/api/v1/plugins');
-          if (pluginsRes.ok) {
-            const pluginsData = await pluginsRes.json();
-            if (Array.isArray(pluginsData)) {
-              setPlugins(pluginsData.filter((p: any) => p.status === 'Active'));
-            }
+          const pluginsData = await apiClient<any[]>('/api/v1/plugins', { method: 'GET' });
+          if (Array.isArray(pluginsData)) {
+            setPlugins(pluginsData.filter((p: any) => p.status === 'Active'));
           }
         } catch (e) {
           console.error("Failed to load plugins in sidebar:", e);

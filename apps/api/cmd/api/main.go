@@ -27,7 +27,23 @@ type InMemorySessionStore struct {
 }
 
 func NewInMemorySessionStore() *InMemorySessionStore {
-	return &InMemorySessionStore{sessions: make(map[string]*domain.Session)}
+	store := &InMemorySessionStore{sessions: make(map[string]*domain.Session)}
+	
+	// Background garbage collection for expired sessions
+	go func() {
+		for {
+			time.Sleep(1 * time.Hour)
+			store.mu.Lock()
+			for id, session := range store.sessions {
+				if time.Now().After(session.ExpiresAt) {
+					delete(store.sessions, id)
+				}
+			}
+			store.mu.Unlock()
+		}
+	}()
+	
+	return store
 }
 
 func (m *InMemorySessionStore) CreateSession(ctx context.Context, session *domain.Session) error {
@@ -90,15 +106,20 @@ func main() {
 	// 2. Initialize Core Services
 	authService := services.NewAuthService(sessionStore, adapterFactories)
 	dbService := services.NewDBService(sessionStore, adapterFactories)
+	pluginManager := services.NewPluginManager()
+	defer pluginManager.UnloadAll()
 
 	// 3. Initialize the API Gateway Router
-	r := router.NewRouter(sessionStore, authService, dbService)
+	r := router.NewRouter(sessionStore, authService, dbService, pluginManager)
 
 	// 3. Start the HTTP Server
 	slog.Info("Starting Dboke API server securely", slog.String("port", port))
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%s", port),
-		Handler: r,
+		Addr:         fmt.Sprintf(":%s", port),
+		Handler:      r,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Setup graceful shutdown

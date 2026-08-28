@@ -21,6 +21,7 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 
 type LoginRequest struct {
 	DbType   string `json:"dbType"`
+	Host     string `json:"host"`
 	Port     string `json:"port"`
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -44,8 +45,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		defaultDb = "mysql"
 	}
 	
+	host := req.Host
+	if host == "" {
+		host = "localhost"
+	}
+	
 	config := domain.DBConnectionConfig{
-		Host:     "localhost",
+		Host:     host,
 		Port:     portInt,
 		User:     req.Username,
 		Password: req.Password,

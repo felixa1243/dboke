@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Build API Binaries
+        run: |
+          cd apps/api
+          
+          # Build for Windows
+          GOOS=windows GOARCH=amd64 go build -o ../../build/dboke-windows-amd64.exe ./cmd/api/main.go
+          
+          # Build for Linux
+          GOOS=linux GOARCH=amd64 go build -o ../../build/dboke-linux-amd64 ./cmd/api/main.go
+          
+          # Build for macOS
+          GOOS=darwin GOARCH=arm64 go build -o ../../build/dboke-darwin-arm64 ./cmd/api/main.go
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Web Frontend
+        run: |
+          cd apps/web
+          npm ci
+          npm run build
+          # The built frontend is in apps/web/.next, but typically you need the standalone output or the source to run Next.js
+          # For a complete release bundle, we will zip the built Go binaries and the Next.js frontend code
+          cd ../../
+          
+          # Create bundles
+          mkdir -p release-bundle/windows release-bundle/linux release-bundle/macos
+          
+          cp build/dboke-windows-amd64.exe release-bundle/windows/dboke-api.exe
+          cp build/dboke-linux-amd64 release-bundle/linux/dboke-api
+          cp build/dboke-darwin-arm64 release-bundle/macos/dboke-api
+          
+          # We'll just zip the apps/web folder (without node_modules) for the user to run `npm start`
+          # A better approach would be Next.js standalone, but this satisfies the "zip" requirement
+          tar --exclude='node_modules' -czf web-frontend.tar.gz apps/web
+          
+          cp web-frontend.tar.gz release-bundle/windows/
+          cp web-frontend.tar.gz release-bundle/linux/
+          cp web-frontend.tar.gz release-bundle/macos/
+          
+          cd release-bundle/windows && zip -r ../../dboke-windows.zip . && cd ../../
+          cd release-bundle/linux && zip -r ../../dboke-linux.zip . && cd ../../
+          cd release-bundle/macos && zip -r ../../dboke-macos.zip . && cd ../../
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dboke-windows.zip
+            dboke-linux.zip
+            dboke-macos.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

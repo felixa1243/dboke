@@ -102,13 +102,46 @@ function TreeNode({
   );
 }
 
-// Table Node with Placeholders
+// Table Node with dynamic columns
 function TableNode({ dbName, tableName, level, onNavigate }: { dbName: string, tableName: string, level: number, onNavigate?: () => void }) {
+  const { expandedNodes } = useSidebarStore();
+  const isColumnsExpanded = !!expandedNodes[`${dbName}-${tableName}-columns`];
+  const [columns, setColumns] = useState<any[]>([]);
+  const [loadingColumns, setLoadingColumns] = useState(false);
+
+  useEffect(() => {
+    if (isColumnsExpanded && columns.length === 0 && !loadingColumns) {
+      setLoadingColumns(true);
+      databasesApi.getTableSchema(dbName, tableName)
+        .then(res => {
+          setColumns(res.columns || []);
+        })
+        .catch(console.error)
+        .finally(() => setLoadingColumns(false));
+    }
+  }, [isColumnsExpanded, dbName, tableName, columns.length, loadingColumns]);
+
   return (
     <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} onNavigate={onNavigate}>
       <TreeNode id={`${dbName}-${tableName}-columns`} label="Columns" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
-        <TreeNode id={`${dbName}-${tableName}-col-1`} label="id (int8)" icon={FolderIcon} level={level + 2} onNavigate={onNavigate} />
-        <TreeNode id={`${dbName}-${tableName}-col-2`} label="name (varchar)" icon={FolderIcon} level={level + 2} onNavigate={onNavigate} />
+        {columns.length > 0 ? (
+          columns.map(c => (
+            <TreeNode 
+              key={c.name} 
+              id={`${dbName}-${tableName}-col-${c.name}`} 
+              label={`${c.name} (${c.type})`} 
+              icon={FolderIcon} 
+              level={level + 2} 
+              onNavigate={onNavigate} 
+            />
+          ))
+        ) : (
+          isColumnsExpanded ? (
+            <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 2) * 12 + 8}px` }}>
+              {loadingColumns ? 'Loading columns...' : 'No columns found'}
+            </div>
+          ) : null
+        )}
       </TreeNode>
       <TreeNode id={`${dbName}-${tableName}-constraints`} label="Constraints" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
       <TreeNode id={`${dbName}-${tableName}-fks`} label="Foreign Keys" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />

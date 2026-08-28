@@ -1,13 +1,17 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
+
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/pkg/contextkeys"
 	"dboke-api/internal/pkg/response"
-	"log/slog"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -34,7 +38,10 @@ func (h *DBHandler) GetDatabases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	databases, err := adapter.GetDatabases(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	databases, err := adapter.GetDatabases(ctx)
 	if err != nil {
 		slog.Error("Failed to list databases", slog.String("error", err.Error()))
 		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", "Failed to list databases")
@@ -62,7 +69,10 @@ func (h *DBHandler) GetTables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tables, err := adapter.GetTables(r.Context(), database)
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	tables, err := adapter.GetTables(ctx, database)
 	if err != nil {
 		slog.Error("Failed to list tables", slog.String("error", err.Error()))
 		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", "Failed to list tables")
@@ -101,16 +111,7 @@ func (h *DBHandler) ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 		req.Offset = 0
 	}
 
-	// Trim trailing semicolons and whitespace
-	importStrings := false
-	_ = importStrings // to avoid unused error if strings isn't imported, wait I should use strings.HasPrefix
-
-	// Import strings if necessary, but we can't do it inline easily without breaking format. 
-	// Actually we should just trim it manually if we don't have strings package guaranteed
-	qStr := req.Query
-	for len(qStr) > 0 && (qStr[len(qStr)-1] == ';' || qStr[len(qStr)-1] == ' ' || qStr[len(qStr)-1] == '\n' || qStr[len(qStr)-1] == '\r' || qStr[len(qStr)-1] == '\t') {
-		qStr = qStr[:len(qStr)-1]
-	}
+	qStr := strings.TrimRight(req.Query, "; \n\r\t")
 
 	// A simplistic but effective pagination wrapper for SELECT queries
 	isSelect := false
@@ -134,7 +135,10 @@ func (h *DBHandler) ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rs, err := adapter.ExecuteRaw(r.Context(), finalQuery, req.Params...)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	rs, err := adapter.ExecuteRaw(ctx, finalQuery, req.Params...)
 	if err != nil {
 		slog.Error("Failed to execute query", slog.String("error", err.Error()))
 		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
@@ -162,7 +166,10 @@ func (h *DBHandler) GetTableSchema(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	columns, err := adapter.GetTableSchema(r.Context(), database, table)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	columns, err := adapter.GetTableSchema(ctx, database, table)
 	if err != nil {
 		slog.Error("Failed to get table schema", slog.String("error", err.Error()))
 		response.WriteError(w, http.StatusInternalServerError, "DB_ERROR", "Failed to list columns")
