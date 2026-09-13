@@ -84,10 +84,23 @@ func (m *InMemorySessionStore) ExtendSession(ctx context.Context, sessionID stri
 
 func main() {
 	// Attempt to load .env from common locations
-	err1 := godotenv.Load("../../.env")
-	err2 := godotenv.Load(".env")
+	envPaths := []string{
+		".env",
+		"../.env",
+		"../../.env",
+		"../../../.env",
+		"../../../../.env",
+	}
+	
+	envLoaded := false
+	for _, path := range envPaths {
+		if err := godotenv.Load(path); err == nil {
+			envLoaded = true
+			break
+		}
+	}
 
-	if err1 != nil && err2 != nil {
+	if !envLoaded {
 		slog.Warn("No .env file found in common locations, falling back to system environment variables")
 	}
 

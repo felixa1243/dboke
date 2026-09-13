@@ -19,6 +19,7 @@ const FolderIcon = ({ className = "" }: { className?: string }) => (
 function DatabaseContent() {
   const searchParams = useSearchParams();
   const dbId = searchParams.get('id');
+  const tableId = searchParams.get('table');
 
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +101,14 @@ function DatabaseContent() {
       setDataResult(null);
     }
   }, [activeTab, expandedTable, dataLimit]);
+
+  // Automatically select table from URL and open Data tab
+  useEffect(() => {
+    if (tableId) {
+      setExpandedTable(tableId);
+      setActiveTab('data');
+    }
+  }, [tableId]);
 
   useEffect(() => {
     if (dbId) {

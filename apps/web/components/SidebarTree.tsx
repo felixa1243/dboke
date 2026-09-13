@@ -122,7 +122,7 @@ function TableNode({ dbName, tableName, level, onNavigate }: { dbName: string, t
   }, [isColumnsExpanded, dbName, tableName, columns.length, loadingColumns]);
 
   return (
-    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} onNavigate={onNavigate}>
+    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} href={`/databases?id=${dbName}&table=${tableName}`} onNavigate={onNavigate}>
       <TreeNode id={`${dbName}-${tableName}-columns`} label="Columns" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
         {columns.length > 0 ? (
           columns.map(c => (
