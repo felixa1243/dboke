@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/pkg/response"
@@ -13,10 +14,28 @@ import (
 
 type AuthHandler struct {
 	authService *services.AuthService
+	dbService   *services.DBService
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+// NewAuthHandler creates the auth handler. dbService may be nil; when set, a
+// session's cached database connections are closed on logout.
+func NewAuthHandler(authService *services.AuthService, dbService *services.DBService) *AuthHandler {
+	return &AuthHandler{authService: authService, dbService: dbService}
+}
+
+// isAllowedDBHost checks host against the comma-separated DBOKE_ALLOWED_DB_HOSTS
+// allowlist. An unset allowlist permits any host.
+func isAllowedDBHost(host string) bool {
+	allowed := os.Getenv("DBOKE_ALLOWED_DB_HOSTS")
+	if strings.TrimSpace(allowed) == "" {
+		return true
+	}
+	for _, h := range strings.Split(allowed, ",") {
+		if strings.EqualFold(strings.TrimSpace(h), host) {
+			return true
+		}
+	}
+	return false
 }
 
 type LoginRequest struct {
@@ -48,6 +67,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	host := req.Host
 	if host == "" {
 		host = "localhost"
+	}
+
+	if !isAllowedDBHost(host) {
+		slog.Warn("Login rejected for disallowed database host", slog.String("host", host))
+		response.WriteError(w, http.StatusForbidden, "HOST_NOT_ALLOWED", "Connections to this database host are not allowed")
+		return
 	}
 	
 	config := domain.DBConnectionConfig{
@@ -97,6 +122,9 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		// Remove from session store via service
 		_ = h.authService.Logout(r.Context(), cookie.Value)
+		if h.dbService != nil {
+			h.dbService.CloseSessionConnection(cookie.Value)
+		}
 	}
 
 	env := os.Getenv("ENV")

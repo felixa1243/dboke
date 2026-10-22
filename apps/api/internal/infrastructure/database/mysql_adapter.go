@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"strconv"
 
 	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/ports"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 type MySQLAdapter struct {
@@ -24,16 +26,31 @@ func init() {
 }
 
 func (m *MySQLAdapter) Connect(ctx context.Context, config domain.DBConnectionConfig) error {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true", 
-		config.User, config.Password, config.Host, config.Port, config.Database)
-	
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", mysqlDSN(config))
 	if err != nil {
 		return fmt.Errorf("failed to open mysql connection: %w", err)
 	}
-	
+
 	m.db = db
-	return m.Ping(ctx)
+	if err := m.Ping(ctx); err != nil {
+		db.Close()
+		m.db = nil
+		return err
+	}
+	return nil
+}
+
+// mysqlDSN builds the DSN via the driver's Config so credentials containing
+// '@', '/', ':' or '?' are encoded correctly.
+func mysqlDSN(config domain.DBConnectionConfig) string {
+	cfg := mysql.NewConfig()
+	cfg.User = config.User
+	cfg.Passwd = config.Password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(config.Host, strconv.Itoa(config.Port))
+	cfg.DBName = config.Database
+	cfg.ParseTime = true
+	return cfg.FormatDSN()
 }
 
 func (m *MySQLAdapter) Disconnect() error {
@@ -65,7 +82,7 @@ func (m *MySQLAdapter) GetDatabases(ctx context.Context) ([]string, error) {
 		}
 		databases = append(databases, name)
 	}
-	return databases, nil
+	return databases, rows.Err()
 }
 
 func (m *MySQLAdapter) GetTables(ctx context.Context, database string) ([]domain.TableMetadata, error) {
@@ -103,7 +120,7 @@ func (m *MySQLAdapter) GetTables(ctx context.Context, database string) ([]domain
 		}
 		tables = append(tables, meta)
 	}
-	return tables, nil
+	return tables, rows.Err()
 }
 
 func (m *MySQLAdapter) GetTableSchema(ctx context.Context, database, table string) ([]domain.ColumnMetadata, error) {
@@ -232,6 +249,10 @@ func (m *MySQLAdapter) ExecuteRaw(ctx context.Context, query string, params ...i
 			}
 		}
 		results = append(results, rowMap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return &domain.ResultSet{

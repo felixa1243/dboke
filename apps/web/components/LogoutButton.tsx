@@ -12,6 +12,8 @@ export function LogoutButton() {
     } catch (e) {
       console.error(e);
     } finally {
+      localStorage.removeItem('dboke_csrf_token');
+      localStorage.removeItem('dboke_db_type');
       router.push('/');
     }
   };

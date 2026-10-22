@@ -124,6 +124,15 @@ func main() {
 	pluginManager := services.NewPluginManager()
 	defer pluginManager.UnloadAll()
 
+	// Close database connections belonging to expired sessions
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			dbService.CloseExpiredConnections(context.Background())
+		}
+	}()
+
 	// 3. Initialize the API Gateway Router
 	r := router.NewRouter(sessionStore, authService, dbService, pluginManager)
 

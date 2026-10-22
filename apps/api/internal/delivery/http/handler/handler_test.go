@@ -122,7 +122,7 @@ func TestAuthHandler_Login_InvalidPayload(t *testing.T) {
 		"pgsql": func() ports.IDBAdapter { return &mockDBAdapter{} },
 	}
 	authSvc := services.NewAuthService(store, factories)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString("invalid json{{{"))
 	w := httptest.NewRecorder()
@@ -138,7 +138,7 @@ func TestAuthHandler_Login_EmptyBody(t *testing.T) {
 	store := newMockSessionStore()
 	factories := map[string]func() ports.IDBAdapter{}
 	authSvc := services.NewAuthService(store, factories)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString("{}"))
 	w := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestAuthHandler_Login_ConnectionFailure(t *testing.T) {
 		},
 	}
 	authSvc := services.NewAuthService(store, factories)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	body := `{"dbType":"pgsql","host":"localhost","port":"5432","username":"user","password":"wrong"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
@@ -183,7 +183,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	t.Setenv("DBOKE_MASTER_KEY", "01234567890123456789012345678901")
 
 	authSvc := services.NewAuthService(store, factories)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	body := `{"dbType":"pgsql","host":"localhost","port":"5432","username":"testuser","password":"pass"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
@@ -242,7 +242,7 @@ func TestAuthHandler_Login_DefaultHost(t *testing.T) {
 	t.Setenv("DBOKE_MASTER_KEY", "01234567890123456789012345678901")
 
 	authSvc := services.NewAuthService(store, factories)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	// No host provided — should default to "localhost"
 	body := `{"dbType":"pgsql","port":"5432","username":"testuser","password":"pass"}`
@@ -277,7 +277,7 @@ func TestAuthHandler_Login_DefaultDatabase(t *testing.T) {
 			t.Setenv("DBOKE_MASTER_KEY", "01234567890123456789012345678901")
 
 			authSvc := services.NewAuthService(store, factories)
-			handler := NewAuthHandler(authSvc)
+			handler := NewAuthHandler(authSvc, nil)
 
 			body := fmt.Sprintf(`{"dbType":"%s","host":"localhost","port":"5432","username":"u","password":"p"}`, tc.dbType)
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(body))
@@ -304,7 +304,7 @@ func TestAuthHandler_Logout_WithCookie(t *testing.T) {
 	})
 
 	authSvc := services.NewAuthService(store, nil)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "dboke_session", Value: "logout-test-session"})
@@ -339,7 +339,7 @@ func TestAuthHandler_Logout_WithCookie(t *testing.T) {
 func TestAuthHandler_Logout_NoCookie(t *testing.T) {
 	store := newMockSessionStore()
 	authSvc := services.NewAuthService(store, nil)
-	handler := NewAuthHandler(authSvc)
+	handler := NewAuthHandler(authSvc, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	w := httptest.NewRecorder()

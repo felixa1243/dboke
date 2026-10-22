@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sync"
 
 	"github.com/hashicorp/go-plugin"
@@ -23,6 +24,15 @@ type PluginManager struct {
 	mu      sync.RWMutex
 }
 
+// pluginIDPattern restricts plugin IDs to a single safe path segment, since IDs
+// are joined into filesystem paths for install, toggle, delete and execution.
+var pluginIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// IsValidPluginID reports whether id is safe to use as a plugin directory name.
+func IsValidPluginID(id string) bool {
+	return pluginIDPattern.MatchString(id)
+}
+
 func NewPluginManager() *PluginManager {
 	return &PluginManager{
 		plugins: make(map[string]*PluginInstance),
@@ -30,11 +40,12 @@ func NewPluginManager() *PluginManager {
 }
 
 func (m *PluginManager) LoadPlugin(pluginID string) error {
+	if !IsValidPluginID(pluginID) {
+		return fmt.Errorf("invalid plugin id: %q", pluginID)
+	}
+
 	cwd, _ := os.Getwd()
-	// from apps/api down to apps/plugins? Wait plugin handler used apps/plugins?
-	// plugin_handler.go: pluginsDir := filepath.Join(cwd, "..", "plugins") -> d:\projects\dboke\apps\api\.. -> d:\projects\dboke\apps\plugins 
-	// Wait, no. plugin_handler uses: cwd, _ := os.Getwd(). If ran from apps/api, cwd is apps/api. cwd, "..", "plugins" is apps/plugins.
-	// Let's match plugin_handler.go logic.
+	// Plugins live in apps/plugins, matching plugin_handler.go
 	pluginDir := filepath.Join(cwd, "..", "plugins", pluginID)
 
 	// Check if disabled

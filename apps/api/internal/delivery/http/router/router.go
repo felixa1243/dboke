@@ -20,12 +20,13 @@ func NewRouter(sessionStore ports.ISessionStore, authService *services.AuthServi
 	r := chi.NewRouter()
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, dbService)
 	dbHandler := handler.NewDBHandler(dbService)
 	pluginHandler := handler.NewPluginHandler(pluginManager, dbService)
 
 	// 1. Core structural middleware
 	r.Use(middleware.RequestID)
+	r.Use(customMiddleware.PeerAddr) // must run before RealIP
 	r.Use(middleware.RealIP)
 	r.Use(logger.RequestLogger)
 	r.Use(middleware.Recoverer)

@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 func TestRateLimit_AllowsNormalTraffic(t *testing.T) {
@@ -121,5 +124,28 @@ func TestRateLimit_ResponseBody(t *testing.T) {
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Errorf("Status = %d, want %d", w.Code, http.StatusTooManyRequests)
+	}
+}
+
+func TestRateLimit_IgnoresSpoofedForwardedHeaders(t *testing.T) {
+	// Same chain as the router: PeerAddr, then RealIP, then RateLimit
+	handler := PeerAddr(chimiddleware.RealIP(RateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))))
+
+	blocked := false
+	for i := 0; i < rate+1; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		// Same peer host, new source port and a fresh spoofed IP each time
+		req.RemoteAddr = fmt.Sprintf("10.77.77.77:%d", 40000+i)
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i))
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code == http.StatusTooManyRequests {
+			blocked = true
+		}
+	}
+	if !blocked {
+		t.Error("rotating X-Forwarded-For / source port bypassed the rate limit")
 	}
 }

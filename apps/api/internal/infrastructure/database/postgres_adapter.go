@@ -3,6 +3,9 @@ package database
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 
 	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/ports"
@@ -27,18 +30,30 @@ func init() {
 
 // Connect initializes the connection pool to the PostgreSQL database
 func (p *PostgresAdapter) Connect(ctx context.Context, config domain.DBConnectionConfig) error {
-	// Construct the Data Source Name (DSN)
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s", 
-		config.User, config.Password, config.Host, config.Port, config.Database)
-	
-	// Create connection pool
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := pgxpool.New(ctx, postgresDSN(config))
 	if err != nil {
 		return fmt.Errorf("failed to create connection pool: %w", err)
 	}
-	
+
 	p.pool = pool
-	return p.Ping(ctx)
+	if err := p.Ping(ctx); err != nil {
+		pool.Close()
+		p.pool = nil
+		return err
+	}
+	return nil
+}
+
+// postgresDSN builds a connection URL, escaping credentials and database name
+// so characters like '@', '/', ':' or '?' cannot break or alter the DSN.
+func postgresDSN(config domain.DBConnectionConfig) string {
+	u := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(config.User, config.Password),
+		Host:   net.JoinHostPort(config.Host, strconv.Itoa(config.Port)),
+		Path:   "/" + config.Database,
+	}
+	return u.String()
 }
 
 // Disconnect gracefully closes all connections in the pool
@@ -74,7 +89,7 @@ func (p *PostgresAdapter) GetDatabases(ctx context.Context) ([]string, error) {
 		}
 		databases = append(databases, name)
 	}
-	return databases, nil
+	return databases, rows.Err()
 }
 
 func formatRows(count int64) string {
@@ -116,7 +131,10 @@ func (p *PostgresAdapter) GetTables(ctx context.Context, database string) ([]dom
 		}
 		tables = append(tables, meta)
 	}
-	
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	// Fetch exact row counts securely for each table
 	for i, t := range tables {
 		sanitizedTable := pgx.Identifier{t.Name}.Sanitize()
@@ -172,7 +190,7 @@ func (p *PostgresAdapter) GetTableSchema(ctx context.Context, database, table st
 		meta.IsNullable = (isNullable == "YES")
 		columns = append(columns, meta)
 	}
-	return columns, nil
+	return columns, rows.Err()
 }
 
 // FetchRows executes a structured SelectQuery securely
@@ -218,6 +236,12 @@ func (p *PostgresAdapter) ExecuteRaw(ctx context.Context, query string, params .
 			rowMap[col] = values[i]
 		}
 		results = append(results, rowMap)
+	}
+
+	// pgx reports server-side errors (constraint violations, timeouts, ...)
+	// through rows.Err rather than from Query itself.
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return &domain.ResultSet{

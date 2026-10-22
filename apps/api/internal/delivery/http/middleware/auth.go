@@ -34,8 +34,7 @@ func AuthMiddleware(sessionStore ports.ISessionStore) func(http.Handler) http.Ha
 					slog.Warn("CSRF Validation Failed", 
 						slog.String("method", r.Method),
 						slog.String("path", r.URL.Path),
-						slog.String("received_csrf", csrfHeader),
-						slog.String("expected_csrf", session.CSRFToken),
+						slog.Bool("csrf_header_present", csrfHeader != ""),
 					)
 					response.WriteError(w, http.StatusForbidden, "CSRF_FAILED", "Missing or invalid CSRF token")
 					return

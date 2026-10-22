@@ -83,6 +83,7 @@ export default function WorkspacePage() {
       if (res.csrfToken) {
         localStorage.setItem('dboke_csrf_token', res.csrfToken);
       }
+      localStorage.setItem('dboke_db_type', profile.dbType);
       router.push('/databases');
     } catch (err: any) {
       setError(err.message || 'Connection failed');

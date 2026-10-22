@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"dboke-api/internal/core/domain"
@@ -28,24 +30,33 @@ func init() {
 }
 
 func (m *MongoDBAdapter) Connect(ctx context.Context, config domain.DBConnectionConfig) error {
-	// Construct connection string
-	uri := fmt.Sprintf("mongodb://%s:%s@%s:%d/?authSource=admin", 
-		config.User, config.Password, config.Host, config.Port)
-	
-	// Handle unauthenticated connections
-	if config.User == "" {
-		uri = fmt.Sprintf("mongodb://%s:%d", config.Host, config.Port)
-	}
-
-	clientOptions := options.Client().ApplyURI(uri)
-	client, err := mongo.Connect(ctx, clientOptions)
+	client, err := mongo.Connect(ctx, mongoClientOptions(config))
 	if err != nil {
 		return fmt.Errorf("failed to create mongo client: %w", err)
 	}
 
 	m.client = client
 	m.dbName = config.Database
-	return m.Ping(ctx)
+	if err := m.Ping(ctx); err != nil {
+		m.Disconnect()
+		m.client = nil
+		return err
+	}
+	return nil
+}
+
+// mongoClientOptions sets host and credentials as structured options rather
+// than interpolating them into a URI, so special characters need no escaping.
+func mongoClientOptions(config domain.DBConnectionConfig) *options.ClientOptions {
+	opts := options.Client().SetHosts([]string{net.JoinHostPort(config.Host, strconv.Itoa(config.Port))})
+	if config.User != "" {
+		opts.SetAuth(options.Credential{
+			Username:   config.User,
+			Password:   config.Password,
+			AuthSource: "admin",
+		})
+	}
+	return opts
 }
 
 func (m *MongoDBAdapter) Disconnect() error {

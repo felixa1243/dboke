@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/pkg/contextkeys"
 	"dboke-api/internal/pkg/response"
@@ -114,13 +115,7 @@ func (h *DBHandler) ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 	qStr := strings.TrimRight(req.Query, "; \n\r\t")
 
 	// A simplistic but effective pagination wrapper for SELECT queries
-	isSelect := false
-	if len(qStr) >= 6 {
-		prefix := qStr[:6]
-		if prefix == "SELECT" || prefix == "select" || prefix == "Select" {
-			isSelect = true
-		}
-	}
+	isSelect := isSelectQuery(qStr)
 
 	finalQuery := qStr
 	if isSelect {
@@ -145,8 +140,47 @@ func (h *DBHandler) ExecuteQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Paginated tells the client whether LIMIT/OFFSET was applied, so it only
+	// offers "fetch next" for queries that can safely be re-run page by page.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rs)
+	json.NewEncoder(w).Encode(struct {
+		*domain.ResultSet
+		Paginated bool `json:"paginated"`
+	}{rs, isSelect})
+}
+
+// isSelectQuery reports whether q is a plain SELECT statement, ignoring case,
+// leading whitespace and leading SQL comments.
+func isSelectQuery(q string) bool {
+	for {
+		q = strings.TrimLeft(q, " \n\r\t")
+		if strings.HasPrefix(q, "--") {
+			if i := strings.IndexByte(q, '\n'); i >= 0 {
+				q = q[i+1:]
+				continue
+			}
+			return false
+		}
+		if strings.HasPrefix(q, "/*") {
+			if i := strings.Index(q, "*/"); i >= 0 {
+				q = q[i+2:]
+				continue
+			}
+			return false
+		}
+		break
+	}
+	if len(q) < 6 || !strings.EqualFold(q[:6], "SELECT") {
+		return false
+	}
+	// Require a word boundary so identifiers like "selection" don't match
+	if len(q) > 6 {
+		c := q[6]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *DBHandler) GetTableSchema(w http.ResponseWriter, r *http.Request) {

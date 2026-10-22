@@ -16,6 +16,19 @@ const FolderIcon = ({ className = "" }: { className?: string }) => (
   </svg>
 );
 
+// Quote a table name for the connected engine: MySQL uses backticks, while
+// Postgres (and standard SQL) uses double quotes. Embedded quotes are doubled.
+function quoteIdentifier(name: string): string {
+  let dbType: string | null = null;
+  try {
+    dbType = localStorage.getItem('dboke_db_type');
+  } catch {}
+  if (dbType === 'mysql') {
+    return '`' + name.replace(/`/g, '``') + '`';
+  }
+  return '"' + name.replace(/"/g, '""') + '"';
+}
+
 function DatabaseContent() {
   const searchParams = useSearchParams();
   const dbId = searchParams.get('id');
@@ -76,12 +89,12 @@ function DatabaseContent() {
     setDataOffset(offsetToUse);
 
     try {
-      const q = `SELECT * FROM "${expandedTable}"`;
+      const q = `SELECT * FROM ${quoteIdentifier(expandedTable)}`;
       const res = await databasesApi.executeQuery(dbId as string, q, [], dataLimit, offsetToUse);
       if (offsetToUse > 0 && dataResult?.rows) {
         setDataResult({
           ...res,
-          rows: [...dataResult.rows, ...res.rows],
+          rows: [...dataResult.rows, ...(res.rows || [])],
         });
       } else {
         setDataResult(res);
@@ -155,7 +168,7 @@ function DatabaseContent() {
       if (offsetToUse > 0 && queryResult?.rows) {
         setQueryResult({
           ...res,
-          rows: [...queryResult.rows, ...res.rows],
+          rows: [...queryResult.rows, ...(res.rows || [])],
         });
       } else {
         setQueryResult(res);
@@ -383,7 +396,7 @@ function DatabaseContent() {
                         <span className="text-xs text-gray-500 font-mono">
                           {dataResult.rows.length} rows fetched
                         </span>
-                        {dataResult.rows.length >= dataLimit + dataOffset && (
+                        {dataResult.paginated && dataResult.rows.length >= dataLimit + dataOffset && (
                           <button 
                             onClick={() => fetchTableData(dataOffset + dataLimit)}
                             disabled={dataLoading}
@@ -608,7 +621,7 @@ function DatabaseContent() {
                       <span className="text-xs text-gray-500 font-mono">
                         {queryResult.rows.length} rows fetched
                       </span>
-                      {queryResult.rows.length >= queryLimit + queryOffset && (
+                      {queryResult.paginated && queryResult.rows.length >= queryLimit + queryOffset && (
                         <button 
                           onClick={() => executeQuery(queryOffset + queryLimit)}
                           disabled={queryLoading}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"dboke-api/internal/core/domain"
@@ -41,11 +42,14 @@ func (s *DBService) GetAdapter(ctx context.Context, sessionID, targetDatabase st
 		if err := adapter.Ping(ctx); err == nil {
 			return adapter, nil
 		}
-		// If ping fails, force reconnect
+		// If ping fails, force reconnect. Only evict the entry if it is still
+		// the adapter we pinged; another request may have replaced it already.
 		s.mu.Lock()
-		adapter.Disconnect()
-		delete(s.activeAdapters, cacheKey)
+		if s.activeAdapters[cacheKey] == adapter {
+			delete(s.activeAdapters, cacheKey)
+		}
 		s.mu.Unlock()
+		adapter.Disconnect()
 	}
 
 	session, err := s.sessionStore.GetSession(ctx, sessionID)
@@ -79,10 +83,43 @@ func (s *DBService) GetAdapter(ctx context.Context, sessionID, targetDatabase st
 	}
 
 	s.mu.Lock()
+	if existing, ok := s.activeAdapters[cacheKey]; ok {
+		// A concurrent request connected first; keep its adapter and close ours
+		s.mu.Unlock()
+		newAdapter.Disconnect()
+		return existing, nil
+	}
 	s.activeAdapters[cacheKey] = newAdapter
 	s.mu.Unlock()
 
 	return newAdapter, nil
+}
+
+// sessionIDFromCacheKey extracts the session ID from an activeAdapters key
+// ("<sessionID>" or "<sessionID>_<database>"). Session IDs are hex, so they never
+// contain '_'.
+func sessionIDFromCacheKey(key string) string {
+	if i := strings.IndexByte(key, '_'); i >= 0 {
+		return key[:i]
+	}
+	return key
+}
+
+// CloseExpiredConnections closes cached connections whose session no longer
+// exists or has expired.
+func (s *DBService) CloseExpiredConnections(ctx context.Context) {
+	s.mu.RLock()
+	sessionIDs := make(map[string]struct{})
+	for key := range s.activeAdapters {
+		sessionIDs[sessionIDFromCacheKey(key)] = struct{}{}
+	}
+	s.mu.RUnlock()
+
+	for sessionID := range sessionIDs {
+		if _, err := s.sessionStore.GetSession(ctx, sessionID); err != nil {
+			s.CloseSessionConnection(sessionID)
+		}
+	}
 }
 
 func (s *DBService) CloseSessionConnection(sessionID string) {

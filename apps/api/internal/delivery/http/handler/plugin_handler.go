@@ -39,12 +39,19 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Uploading a plugin installs an executable that the server runs, so it is
+	// opt-in rather than available to every authenticated session.
+	if os.Getenv("DBOKE_ENABLE_PLUGIN_UPLOAD") != "true" {
+		response.WriteError(w, http.StatusForbidden, "PLUGIN_UPLOAD_DISABLED", "Plugin upload is disabled on this server (set DBOKE_ENABLE_PLUGIN_UPLOAD=true to enable)")
+		return
+	}
+
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "File too large or invalid multipart data")
 		return
 	}
 
-	file, header, err := r.FormFile("executable")
+	file, _, err := r.FormFile("executable")
 	if err != nil {
 		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Zip file is required")
 		return
@@ -59,15 +66,17 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tempZipPath := filepath.Join(pluginsDir, header.Filename)
-	dst, err := os.Create(tempZipPath)
+	dst, err := os.CreateTemp(pluginsDir, "upload-*.zip")
 	if err != nil {
 		response.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create temp zip file")
 		return
 	}
-	
+	tempZipPath := dst.Name()
+
+
 	if _, err := io.Copy(dst, file); err != nil {
 		dst.Close()
+		os.Remove(tempZipPath)
 		response.WriteError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to write temp zip data")
 		return
 	}
@@ -76,6 +85,7 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 	// Extract meta.json
 	rZip, err := zip.OpenReader(tempZipPath)
 	if err != nil {
+		os.Remove(tempZipPath)
 		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid zip file")
 		return
 	}
@@ -102,6 +112,12 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !services.IsValidPluginID(meta.ID) {
+		os.Remove(tempZipPath)
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Plugin 'id' may only contain letters, digits, '-' and '_'")
+		return
+	}
+
 	folderName := meta.ID
 	pluginInstallDir := filepath.Join(pluginsDir, folderName)
 
@@ -110,8 +126,10 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 
 		taskqueue.UpdateTask(taskId, taskqueue.StatusProcessing, 10, "Extracting plugin files...", "")
 		
-		err = unzipFile(tempZipPath, pluginInstallDir)
-		if err != nil {
+		// Stop any running instance so the freshly installed binary is used next time
+		h.pluginManager.UnloadPlugin(folderName)
+
+		if err := unzipFile(tempZipPath, pluginInstallDir); err != nil {
 			fmt.Printf("Plugin Install Failed for %s: %v\n", meta.Name, err)
 			taskqueue.UpdateTask(taskId, taskqueue.StatusFailed, 10, "Failed to extract plugin", err.Error())
 			return
@@ -137,8 +155,8 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Successfully installed plugin %s to %s\n", meta.Name, pluginInstallDir)
 	})
 
-	w.WriteHeader(http.StatusAccepted)
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Plugin zip uploaded successfully. Installation started.",
 		"task_id": taskId,
@@ -263,13 +281,11 @@ func (h *PluginHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
-	// Get plugin ID from path
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 {
+	pluginId := chi.URLParam(r, "id")
+	if !services.IsValidPluginID(pluginId) {
 		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid plugin ID")
 		return
 	}
-	pluginId := parts[4]
 
 	cwd, _ := os.Getwd()
 	pluginDir := filepath.Join(cwd, "..", "plugins", pluginId)
@@ -284,6 +300,7 @@ func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
 		os.Rename(inactiveFrontendDir, activeFrontendDir)
 	} else {
 		// Deactivate the plugin
+		h.pluginManager.UnloadPlugin(pluginId)
 		os.WriteFile(disabledFile, []byte(""), 0644)
 		// Next.js ignores folders starting with an underscore, so this safely disables the route!
 		os.Rename(activeFrontendDir, inactiveFrontendDir)
@@ -292,12 +309,13 @@ func (h *PluginHandler) TogglePlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PluginHandler) DeletePlugin(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 5 { // /api/v1/plugins/{id}
+	pluginId := chi.URLParam(r, "id")
+	if !services.IsValidPluginID(pluginId) {
 		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid plugin ID")
 		return
 	}
-	pluginId := parts[4]
+
+	h.pluginManager.UnloadPlugin(pluginId)
 
 	cwd, _ := os.Getwd()
 	// Delete backend folder
@@ -343,7 +361,11 @@ func copyDir(src string, dst string) error {
 func (h *PluginHandler) ExecutePluginQuery(w http.ResponseWriter, r *http.Request) {
 	pluginID := chi.URLParam(r, "id")
 	database := chi.URLParam(r, "database")
-	
+	if !services.IsValidPluginID(pluginID) {
+		response.WriteError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid plugin ID")
+		return
+	}
+
 	sessionID, ok := r.Context().Value(contextkeys.SessionIDKey).(string)
 	if !ok || sessionID == "" {
 		response.WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
