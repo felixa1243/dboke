@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"dboke-api/internal/core/domain"
 	"dboke-api/internal/core/services"
 	"dboke-api/internal/pkg/response"
@@ -13,6 +14,21 @@ import (
 
 type AuthHandler struct {
 	authService *services.AuthService
+}
+
+// resolveDBHost maps loopback hosts to DBOKE_LOCALHOST_ALIAS when set. In a
+// container, "localhost" is the container itself, so compose sets the alias to
+// host.docker.internal to make "localhost" mean the user's machine.
+func resolveDBHost(host string) string {
+	alias := strings.TrimSpace(os.Getenv("DBOKE_LOCALHOST_ALIAS"))
+	if alias == "" {
+		return host
+	}
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1", "[::1]":
+		return alias
+	}
+	return host
 }
 
 func NewAuthHandler(authService *services.AuthService) *AuthHandler {
@@ -51,7 +67,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	config := domain.DBConnectionConfig{
-		Host:     host,
+		Host:     resolveDBHost(host),
 		Port:     portInt,
 		User:     req.Username,
 		Password: req.Password,
