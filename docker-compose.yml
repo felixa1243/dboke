@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      # Required: exactly 32 characters. Generate with: go run ./apps/api/cmd/keygen
+      DBOKE_MASTER_KEY: ${DBOKE_MASTER_KEY:?Set DBOKE_MASTER_KEY in .env (32 characters)}
+      # Origin the browser loads the web UI from
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
+      # Use "production" only when served over HTTPS (it marks the session cookie Secure)
+      ENV: ${ENV:-development}
+      # Plugin upload installs executables the server runs; keep off unless needed
+      DBOKE_ENABLE_PLUGIN_UPLOAD: ${DBOKE_ENABLE_PLUGIN_UPLOAD:-false}
+      DBOKE_ALLOWED_DB_HOSTS: ${DBOKE_ALLOWED_DB_HOSTS:-}
+      # Inside the container "localhost" is the container itself; treat it as the Docker host
+      DBOKE_LOCALHOST_ALIAS: host.docker.internal
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - plugins:/app/plugins
+    # Lets the API reach databases running on the Docker host
+    # (entering localhost on the login screen is mapped to it)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Address the *browser* uses to reach the API
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  plugins:

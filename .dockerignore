@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env*.local
+**/node_modules
+**/.next
+**/out
+**/*.log
+**/.DS_Store
+apps/api/dboke-api
+apps/plugins
+example_plugins
+**/*.md
