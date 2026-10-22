@@ -70,6 +70,9 @@ function DatabaseContent() {
   const [queryError, setQueryError] = useState('');
   const [queryLimit, setQueryLimit] = useState(200);
   const [queryOffset, setQueryOffset] = useState(0);
+  // The query text and page size that produced the rows on screen. "Fetch Next"
+  // must continue that run, not whatever is in the editor / limit box now.
+  const [queryRun, setQueryRun] = useState<{ query: string; limit: number } | null>(null);
 
   const [savedQueries, setSavedQueries] = useState<{name: string, query: string}[]>([]);
   const [sidebarTab, setSidebarTab] = useState<'tables' | 'saved'>('tables');
@@ -106,14 +109,31 @@ function DatabaseContent() {
     }
   };
 
-  // Automatically fetch table data when switching to Data tab or when selected table changes
+  // Everything cached below belongs to one database; drop it when the database
+  // changes (the component stays mounted since only ?id= changes). Declared
+  // before the effects that repopulate it so they win within the same commit.
   useEffect(() => {
-    if (activeTab === 'data' && expandedTable) {
-      fetchTableData(0);
-    } else if (activeTab === 'data' && !expandedTable) {
-      setDataResult(null);
+    setExpandedTable(null);
+    setExpandedTreeTable(null);
+    setExpandedColumns(null);
+    setTableSchemas({});
+    setDataResult(null);
+    setDataError('');
+    setDataOffset(0);
+    setQueryResult(null);
+    setQueryError('');
+    setQueryOffset(0);
+    setQueryRun(null);
+
+    let saved: {name: string, query: string}[] = [];
+    if (dbId) {
+      try {
+        const raw = localStorage.getItem(`dboke_queries_${dbId}`);
+        if (raw) saved = JSON.parse(raw);
+      } catch (e) {}
     }
-  }, [activeTab, expandedTable, dataLimit]);
+    setSavedQueries(saved);
+  }, [dbId]);
 
   // Automatically select table from URL and open Data tab
   useEffect(() => {
@@ -121,18 +141,16 @@ function DatabaseContent() {
       setExpandedTable(tableId);
       setActiveTab('data');
     }
-  }, [tableId]);
+  }, [dbId, tableId]);
 
+  // Automatically fetch table data when switching to Data tab or when selected table / database changes
   useEffect(() => {
-    if (dbId) {
-      const q = localStorage.getItem(`dboke_queries_${dbId}`);
-      if (q) {
-        try {
-          setSavedQueries(JSON.parse(q));
-        } catch (e) {}
-      }
+    if (activeTab === 'data' && expandedTable) {
+      fetchTableData(0);
+    } else if (activeTab === 'data' && !expandedTable) {
+      setDataResult(null);
     }
-  }, [dbId]);
+  }, [activeTab, expandedTable, dataLimit, dbId]);
 
   const saveQuery = () => {
     if (!query.trim()) return;
@@ -163,8 +181,14 @@ function DatabaseContent() {
     const offsetToUse = overrideOffset !== undefined ? overrideOffset : queryOffset;
     setQueryOffset(offsetToUse);
 
+    // Continuing a run reuses its query and page size; a fresh run snapshots them
+    const continuing = offsetToUse > 0 && queryRun !== null;
+    const runQuery = continuing ? queryRun!.query : query;
+    const runLimit = continuing ? queryRun!.limit : queryLimit;
+    if (!continuing) setQueryRun({ query, limit: queryLimit });
+
     try {
-      const res = await databasesApi.executeQuery(dbId as string, query, [], queryLimit, offsetToUse);
+      const res = await databasesApi.executeQuery(dbId as string, runQuery, [], runLimit, offsetToUse);
       if (offsetToUse > 0 && queryResult?.rows) {
         setQueryResult({
           ...res,
@@ -621,9 +645,9 @@ function DatabaseContent() {
                       <span className="text-xs text-gray-500 font-mono">
                         {queryResult.rows.length} rows fetched
                       </span>
-                      {queryResult.paginated && queryResult.rows.length >= queryLimit + queryOffset && (
+                      {queryResult.paginated && queryRun && queryResult.rows.length >= queryRun.limit + queryOffset && (
                         <button 
-                          onClick={() => executeQuery(queryOffset + queryLimit)}
+                          onClick={() => executeQuery(queryOffset + queryRun.limit)}
                           disabled={queryLoading}
                           className="px-3 py-1 bg-white dark:bg-black border border-gray-200 dark:border-gray-700 text-xs font-semibold rounded hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
                         >

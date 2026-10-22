@@ -3,8 +3,16 @@ package taskqueue
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"sync"
+	"time"
 )
+
+// ErrQueueFull is returned by EnqueueTask when no worker capacity is left.
+var ErrQueueFull = errors.New("task queue is full")
+
+// finishedTaskTTL is how long completed or failed tasks stay queryable.
+const finishedTaskTTL = time.Hour
 
 type TaskStatus string
 
@@ -21,6 +29,8 @@ type Task struct {
 	Progress int        `json:"progress"`
 	Message  string     `json:"message"`
 	Error    string     `json:"error,omitempty"`
+
+	finishedAt time.Time
 }
 
 var (
@@ -50,10 +60,23 @@ func GenerateID() string {
 	return hex.EncodeToString(b)
 }
 
-// EnqueueTask adds a new task to the queue, returns its ID, and schedules it to run on a worker
-func EnqueueTask(initialMsg string, execute func(id string)) string {
+// pruneFinishedLocked drops tasks that finished longer than finishedTaskTTL ago.
+// The caller must hold mu.
+func pruneFinishedLocked(now time.Time) {
+	for id, t := range tasks {
+		if !t.finishedAt.IsZero() && now.Sub(t.finishedAt) > finishedTaskTTL {
+			delete(tasks, id)
+		}
+	}
+}
+
+// EnqueueTask adds a new task to the queue, returns its ID, and schedules it to run on a worker.
+// It never blocks: if the queue is full it returns ErrQueueFull and records nothing.
+func EnqueueTask(initialMsg string, execute func(id string)) (string, error) {
 	id := GenerateID()
+
 	mu.Lock()
+	pruneFinishedLocked(time.Now())
 	tasks[id] = &Task{
 		ID:       id,
 		Status:   StatusPending,
@@ -62,12 +85,15 @@ func EnqueueTask(initialMsg string, execute func(id string)) string {
 	}
 	mu.Unlock()
 
-	// Send to worker pool
-	jobQueue <- func() {
-		execute(id)
+	select {
+	case jobQueue <- func() { execute(id) }:
+		return id, nil
+	default:
+		mu.Lock()
+		delete(tasks, id)
+		mu.Unlock()
+		return "", ErrQueueFull
 	}
-
-	return id
 }
 
 // GetTask returns a copy of the task
@@ -87,6 +113,9 @@ func UpdateTask(id string, status TaskStatus, progress int, msg string, errMsg s
 	defer mu.Unlock()
 	if t, ok := tasks[id]; ok {
 		t.Status = status
+		if (status == StatusCompleted || status == StatusFailed) && t.finishedAt.IsZero() {
+			t.finishedAt = time.Now()
+		}
 		if progress >= 0 {
 			t.Progress = progress
 		}

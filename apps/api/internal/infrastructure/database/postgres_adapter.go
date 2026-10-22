@@ -218,12 +218,12 @@ func (p *PostgresAdapter) ExecuteRaw(ctx context.Context, query string, params .
 
 	// Extract column names dynamically from the result
 	fieldDescriptions := rows.FieldDescriptions()
-	var columns []string
+	columns := make([]string, 0, len(fieldDescriptions))
 	for _, fd := range fieldDescriptions {
 		columns = append(columns, string(fd.Name))
 	}
 
-	var results []map[string]interface{}
+	results := make([]map[string]interface{}, 0)
 	for rows.Next() {
 		values, err := rows.Values()
 		if err != nil {
@@ -242,6 +242,15 @@ func (p *PostgresAdapter) ExecuteRaw(ctx context.Context, query string, params .
 	// through rows.Err rather than from Query itself.
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Statements without a result set (INSERT/UPDATE/DELETE without RETURNING)
+	// report how many rows they touched, matching the MySQL adapter.
+	if len(columns) == 0 {
+		return &domain.ResultSet{
+			Columns: []string{"rows_affected"},
+			Rows:    []map[string]interface{}{{"rows_affected": rows.CommandTag().RowsAffected()}},
+		}, nil
 	}
 
 	return &domain.ResultSet{

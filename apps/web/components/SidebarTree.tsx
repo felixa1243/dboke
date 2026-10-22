@@ -108,21 +108,33 @@ function TableNode({ dbName, tableName, level, onNavigate }: { dbName: string, t
   const isColumnsExpanded = !!expandedNodes[`${dbName}-${tableName}-columns`];
   const [columns, setColumns] = useState<any[]>([]);
   const [loadingColumns, setLoadingColumns] = useState(false);
+  // Set once a fetch settles (success, failure or empty) so a failed or empty
+  // result is not re-requested in a loop
+  const [columnsFetched, setColumnsFetched] = useState(false);
 
   useEffect(() => {
-    if (isColumnsExpanded && columns.length === 0 && !loadingColumns) {
-      setLoadingColumns(true);
-      databasesApi.getTableSchema(dbName, tableName)
-        .then(res => {
-          setColumns(res.columns || []);
-        })
-        .catch(console.error)
-        .finally(() => setLoadingColumns(false));
-    }
-  }, [isColumnsExpanded, dbName, tableName, columns.length, loadingColumns]);
+    if (!isColumnsExpanded || columnsFetched) return;
+    let cancelled = false;
+    setLoadingColumns(true);
+    databasesApi.getTableSchema(dbName, tableName)
+      .then(res => {
+        if (!cancelled) setColumns(res.columns || []);
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingColumns(false);
+          setColumnsFetched(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+      setLoadingColumns(false);
+    };
+  }, [isColumnsExpanded, columnsFetched, dbName, tableName]);
 
   return (
-    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} href={`/databases?id=${dbName}&table=${tableName}`} onNavigate={onNavigate}>
+    <TreeNode id={`${dbName}-table-${tableName}`} label={tableName} icon={TableIcon} level={level} href={`/databases?id=${encodeURIComponent(dbName)}&table=${encodeURIComponent(tableName)}`} onNavigate={onNavigate}>
       <TreeNode id={`${dbName}-${tableName}-columns`} label="Columns" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
         {columns.length > 0 ? (
           columns.map(c => (
@@ -136,11 +148,12 @@ function TableNode({ dbName, tableName, level, onNavigate }: { dbName: string, t
             />
           ))
         ) : (
-          isColumnsExpanded ? (
-            <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 2) * 12 + 8}px` }}>
-              {loadingColumns ? 'Loading columns...' : 'No columns found'}
-            </div>
-          ) : null
+          // Always provide children: TreeNode only shows an expand chevron (and
+          // lets the node be toggled) when it has some, and it renders them only
+          // while expanded.
+          <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 2) * 12 + 8}px` }}>
+            {loadingColumns || !columnsFetched ? 'Loading columns...' : 'No columns found'}
+          </div>
         )}
       </TreeNode>
       <TreeNode id={`${dbName}-${tableName}-constraints`} label="Constraints" icon={FolderIcon} level={level + 1} onNavigate={onNavigate} />
@@ -157,24 +170,29 @@ function DatabaseNode({ dbName, level, onNavigate }: { dbName: string, level: nu
   const isExpanded = !!expandedNodes[`db-${dbName}`];
   const isTablesExpanded = !!expandedNodes[`${dbName}-tables`];
   const [tables, setTables] = useState<Table[]>([]);
+  const [tablesFetched, setTablesFetched] = useState(false);
   
   useEffect(() => {
-    if (isTablesExpanded && tables.length === 0) {
-      databasesApi.getTables(dbName).then(res => setTables(res.tables || [])).catch(console.error);
-    }
-  }, [isTablesExpanded, dbName, tables.length]);
+    if (!isTablesExpanded || tablesFetched) return;
+    let cancelled = false;
+    databasesApi.getTables(dbName)
+      .then(res => { if (!cancelled) setTables(res.tables || []); })
+      .catch(console.error)
+      .finally(() => { if (!cancelled) setTablesFetched(true); });
+    return () => { cancelled = true; };
+  }, [isTablesExpanded, tablesFetched, dbName]);
 
   return (
-    <TreeNode id={`db-${dbName}`} label={dbName} icon={DatabaseIcon} level={level} href={`/databases?id=${dbName}`} onNavigate={onNavigate}>
+    <TreeNode id={`db-${dbName}`} label={dbName} icon={DatabaseIcon} level={level} href={`/databases?id=${encodeURIComponent(dbName)}`} onNavigate={onNavigate}>
       <TreeNode id={`${dbName}-schemas`} label="Schemas" icon={FolderIcon} level={level + 1} onNavigate={onNavigate}>
         <TreeNode id={`${dbName}-public`} label="public" icon={FolderIcon} level={level + 2} onNavigate={onNavigate}>
-          <TreeNode id={`${dbName}-tables`} label="Tables" icon={FolderIcon} level={level + 3} href={`/databases?id=${dbName}`} onNavigate={onNavigate}>
+          <TreeNode id={`${dbName}-tables`} label="Tables" icon={FolderIcon} level={level + 3} href={`/databases?id=${encodeURIComponent(dbName)}`} onNavigate={onNavigate}>
             {tables.length > 0 ? (
               tables.map(t => (
                 <TableNode key={t.name} dbName={dbName} tableName={t.name} level={level + 4} onNavigate={onNavigate} />
               ))
             ) : (
-              <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 4) * 12 + 8}px` }}>Loading tables...</div>
+              <div className="py-1 text-xs text-gray-500 italic" style={{ paddingLeft: `${(level + 4) * 12 + 8}px` }}>{tablesFetched ? 'No tables found' : 'Loading tables...'}</div>
             )}
           </TreeNode>
           <TreeNode id={`${dbName}-views`} label="Views" icon={FolderIcon} level={level + 3} onNavigate={onNavigate} />

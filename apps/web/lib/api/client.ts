@@ -43,5 +43,7 @@ export async function apiClient<T>(path: string, options?: RequestInit): Promise
     throw new ApiError(res.status, message);
   }
   
-  return res.json();
+  // Some endpoints (e.g. plugin toggle/delete) answer 200 with no body
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }

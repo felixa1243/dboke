@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface TableInfo {
@@ -12,7 +12,7 @@ interface ColumnInfo {
   type: string;
 }
 
-export default function DataSeederPlugin() {
+function DataSeederPlugin() {
   const searchParams = useSearchParams();
   const initialDb = searchParams.get("id") || "";
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -49,28 +49,37 @@ export default function DataSeederPlugin() {
   // Fetch Tables
   useEffect(() => {
     if (!selectedDb) return;
+    let cancelled = false;
     setTables([]);
     setSelectedTable("");
     setColumns([]);
+    setColumnMap({});
     
-    fetch(`${API_URL}/api/v1/databases/${selectedDb}/tables`, { credentials: 'include' })
+    fetch(`${API_URL}/api/v1/databases/${encodeURIComponent(selectedDb)}/tables`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
-        if (data.tables) setTables(data.tables);
+        if (!cancelled && data.tables) setTables(data.tables);
       })
       .catch((e) => console.error(e));
+    return () => { cancelled = true; };
   }, [selectedDb]);
 
   // Fetch Columns
   useEffect(() => {
+    // Drop the previous table's columns immediately so they can never be sent
+    // together with a different table name
+    setColumns([]);
+    setColumnMap({});
     if (!selectedDb || !selectedTable) return;
+    let cancelled = false;
     
-    fetch(`${API_URL}/api/v1/databases/${selectedDb}/tables/${selectedTable}/columns`, { credentials: 'include' })
+    fetch(`${API_URL}/api/v1/databases/${encodeURIComponent(selectedDb)}/tables/${encodeURIComponent(selectedTable)}/columns`, { credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to fetch schema");
         return res.json();
       })
       .then((data) => {
+        if (cancelled) return;
         if (data.columns) {
           setColumns(data.columns);
           
@@ -78,7 +87,12 @@ export default function DataSeederPlugin() {
           const newMap: Record<string, string> = {};
           data.columns.forEach((c: ColumnInfo) => {
             const lowerName = c.name.toLowerCase();
-            if (lowerName.includes("id")) newMap[c.name] = "uuid";
+            const lowerType = c.type.toLowerCase();
+            const isNumericType = /^(tiny|small|medium|big)?(int|integer|serial)|^(numeric|decimal|real|float|double)/.test(lowerType);
+            // Only real id columns ("id", "user_id", "userId"), and never a uuid
+            // for a numeric column (foreign keys are usually integers)
+            const looksLikeId = lowerName === "id" || lowerName.endsWith("_id") || /[a-z]Id$/.test(c.name);
+            if (looksLikeId) newMap[c.name] = isNumericType ? "number" : "uuid";
             else if (lowerName.includes("email")) newMap[c.name] = "email";
             else if (lowerName.includes("name")) newMap[c.name] = "person";
             else if (lowerName.includes("date") || lowerName.includes("time") || lowerName.includes("created") || lowerName.includes("updated") || lowerName.includes("deleted") || c.type.toLowerCase().includes("timestamp") || c.type.toLowerCase().includes("date") || c.type.toLowerCase().includes("time")) newMap[c.name] = "date";
@@ -91,6 +105,7 @@ export default function DataSeederPlugin() {
         }
       })
       .catch((e) => console.error(e));
+    return () => { cancelled = true; };
   }, [selectedDb, selectedTable]);
 
   const handleSeed = async () => {
@@ -112,7 +127,7 @@ export default function DataSeederPlugin() {
       const token = localStorage.getItem("dboke_token"); // if any, or it uses cookies.
       
       const csrf = localStorage.getItem('dboke_csrf_token') || '';
-      const res = await fetch(`${API_URL}/api/v1/databases/${selectedDb}/plugins/data-seeder/execute`, {
+      const res = await fetch(`${API_URL}/api/v1/databases/${encodeURIComponent(selectedDb)}/plugins/data-seeder/execute`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -279,5 +294,14 @@ export default function DataSeederPlugin() {
         </div>
       )}
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary for static export
+export default function DataSeederPage() {
+  return (
+    <Suspense fallback={null}>
+      <DataSeederPlugin />
+    </Suspense>
   );
 }

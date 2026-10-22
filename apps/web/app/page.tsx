@@ -45,6 +45,12 @@ export default function WorkspacePage() {
   }, []);
 
   const saveConnection = (profile: ConnectionProfile) => {
+    // A retried "Connect & Save" must not add the same profile again
+    const exists = connections.some(c =>
+      c.name === profile.name && c.dbType === profile.dbType &&
+      c.host === profile.host && c.port === profile.port && c.username === profile.username
+    );
+    if (exists) return;
     const newConns = [...connections, profile];
     setConnections(newConns);
     localStorage.setItem('dboke_connections', JSON.stringify(newConns));
@@ -69,7 +75,7 @@ export default function WorkspacePage() {
     setConnName(`Local ${driver.toUpperCase()}`);
   };
 
-  const handleConnect = async (profile: ConnectionProfile, overridePassword?: string) => {
+  const handleConnect = async (profile: ConnectionProfile, overridePassword?: string): Promise<boolean> => {
     setLoading(true);
     setError('');
     try {
@@ -85,8 +91,10 @@ export default function WorkspacePage() {
       }
       localStorage.setItem('dboke_db_type', profile.dbType);
       router.push('/databases');
+      return true;
     } catch (err: any) {
       setError(err.message || 'Connection failed');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -102,8 +110,10 @@ export default function WorkspacePage() {
       port,
       username,
     };
-    saveConnection(newProfile);
-    await handleConnect(newProfile, password);
+    // Only remember the profile once it has actually connected
+    if (await handleConnect(newProfile, password)) {
+      saveConnection(newProfile);
+    }
   };
 
   const drivers = [

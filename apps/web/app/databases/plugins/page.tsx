@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -21,6 +21,44 @@ export default function PluginsPage() {
   const [taskProgress, setTaskProgress] = useState(0);
   const [taskMessage, setTaskMessage] = useState("");
   const [externalPlugins, setExternalPlugins] = useState<PluginInfo[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  // Don't keep polling (and calling setState) after leaving the page
+  useEffect(() => stopPolling, []);
+
+  // Toggle/delete reply 200 with an empty body; surface failures (expired
+  // session, stale CSRF token, ...) instead of silently refreshing the list
+  const pluginAction = async (path: string, method: 'POST' | 'DELETE') => {
+    const csrf = localStorage.getItem('dboke_csrf_token') || '';
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        method,
+        headers: { 'X-CSRF-Token': csrf },
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try {
+          const body = await res.json();
+          message = body.message || body.error || message;
+        } catch {}
+        alert(message);
+        return;
+      }
+    } catch (e) {
+      alert('Request failed: ' + (e instanceof Error ? e.message : String(e)));
+      return;
+    }
+    fetchPlugins();
+    router.refresh();
+  };
 
   const fetchPlugins = async () => {
     try {
@@ -75,28 +113,39 @@ export default function PluginsPage() {
       if (res.status === 202 && data.task_id) {
         // Polling loop
         const taskId = data.task_id;
-        const pollInterval = setInterval(async () => {
+        stopPolling();
+        pollRef.current = setInterval(async () => {
           try {
             const taskRes = await fetch(`${API_URL}/api/v1/tasks/${taskId}`, { credentials: 'include' });
+
+            if (!taskRes.ok) {
+              // Task is gone (e.g. the API restarted) or the session expired:
+              // polling again can never succeed
+              stopPolling();
+              setUploading(false);
+              alert(taskRes.status === 404
+                ? "Installation status was lost (the server may have restarted). Check the plugin list."
+                : `Could not check installation status (${taskRes.status}).`);
+              fetchPlugins();
+              return;
+            }
+
             const taskData = await taskRes.json();
-            
-            if (taskRes.ok) {
-              setTaskProgress(taskData.progress);
-              setTaskMessage(taskData.message);
-              
-              if (taskData.status === "completed") {
-                clearInterval(pollInterval);
-                setUploading(false);
-                setIsModalOpen(false);
-                setSelectedFile(null);
-                setTaskProgress(0);
-                setTaskMessage("");
-                fetchPlugins(); // Refresh the list
-              } else if (taskData.status === "failed") {
-                clearInterval(pollInterval);
-                setUploading(false);
-                alert("Installation failed: " + (taskData.error || taskData.message));
-              }
+            setTaskProgress(taskData.progress);
+            setTaskMessage(taskData.message);
+
+            if (taskData.status === "completed") {
+              stopPolling();
+              setUploading(false);
+              setIsModalOpen(false);
+              setSelectedFile(null);
+              setTaskProgress(0);
+              setTaskMessage("");
+              fetchPlugins(); // Refresh the list
+            } else if (taskData.status === "failed") {
+              stopPolling();
+              setUploading(false);
+              alert("Installation failed: " + (taskData.error || taskData.message));
             }
           } catch (e) {
             console.error("Polling error", e);
@@ -326,31 +375,15 @@ export default function PluginsPage() {
                     </Link>
                   )}
                   <button 
-                    onClick={async () => {
-                      const csrf = localStorage.getItem('dboke_csrf_token') || '';
-                      await fetch(`${API_URL}/api/v1/plugins/${plugin.id}/toggle`, { 
-                        method: 'POST', 
-                        headers: { 'X-CSRF-Token': csrf },
-                        credentials: 'include' 
-                      });
-                      fetchPlugins();
-                      router.refresh();
-                    }}
+                    onClick={() => pluginAction(`/api/v1/plugins/${encodeURIComponent(plugin.id)}/toggle`, 'POST')}
                     className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                   >
                     {plugin.status === 'Active' ? 'Deactivate' : 'Activate'}
                   </button>
                   <button 
-                    onClick={async () => {
-                      if(confirm('Are you sure you want to completely delete this plugin?')) {
-                        const csrf = localStorage.getItem('dboke_csrf_token') || '';
-                        await fetch(`${API_URL}/api/v1/plugins/${plugin.id}`, { 
-                          method: 'DELETE', 
-                          headers: { 'X-CSRF-Token': csrf },
-                          credentials: 'include' 
-                        });
-                        fetchPlugins();
-                        router.refresh();
+                    onClick={() => {
+                      if (confirm('Are you sure you want to completely delete this plugin?')) {
+                        pluginAction(`/api/v1/plugins/${encodeURIComponent(plugin.id)}`, 'DELETE');
                       }
                     }}
                     className="px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors ml-auto"

@@ -121,7 +121,7 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 	folderName := meta.ID
 	pluginInstallDir := filepath.Join(pluginsDir, folderName)
 
-	taskId := taskqueue.EnqueueTask("Starting installation...", func(taskId string) {
+	taskId, err := taskqueue.EnqueueTask("Starting installation...", func(taskId string) {
 		defer os.Remove(tempZipPath) // Always clean up the temp zip
 
 		taskqueue.UpdateTask(taskId, taskqueue.StatusProcessing, 10, "Extracting plugin files...", "")
@@ -154,6 +154,11 @@ func (h *PluginHandler) UploadPlugin(w http.ResponseWriter, r *http.Request) {
 		taskqueue.UpdateTask(taskId, taskqueue.StatusCompleted, 100, "Installation complete!", "")
 		fmt.Printf("Successfully installed plugin %s to %s\n", meta.Name, pluginInstallDir)
 	})
+	if err != nil {
+		os.Remove(tempZipPath)
+		response.WriteError(w, http.StatusServiceUnavailable, "QUEUE_FULL", "Too many installations in progress; try again shortly")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)

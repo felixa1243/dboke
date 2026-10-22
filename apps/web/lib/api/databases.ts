@@ -15,6 +15,8 @@ export interface TablesResponse {
   tables: Table[];
 }
 
+const enc = encodeURIComponent;
+
 export const databasesApi = {
   getDatabases: () => {
     return apiClient<DatabaseResponse>('/api/v1/databases', {
@@ -22,23 +24,23 @@ export const databasesApi = {
     });
   },
   getTables: (database: string) => {
-    return apiClient<TablesResponse>(`/api/v1/databases/${database}/tables`, {
+    return apiClient<TablesResponse>(`/api/v1/databases/${enc(database)}/tables`, {
       method: 'GET',
     });
   },
   getTableSchema: (database: string, table: string) => {
-    return apiClient<{ columns: any[] }>(`/api/v1/databases/${database}/tables/${table}/columns`, {
+    return apiClient<{ columns: any[] }>(`/api/v1/databases/${enc(database)}/tables/${enc(table)}/columns`, {
       method: 'GET',
     });
   },
   executeQuery: (database: string, query: string, params: any[] = [], limit: number = 200, offset: number = 0) => {
-    return apiClient<any>(`/api/v1/databases/${database}/query`, {
+    return apiClient<any>(`/api/v1/databases/${enc(database)}/query`, {
       method: 'POST',
       body: JSON.stringify({ query, params, limit, offset }),
     });
   },
   executePluginQuery: (database: string, pluginId: string, payload: any) => {
-    return apiClient<any>(`/api/v1/databases/${database}/plugins/${pluginId}/execute`, {
+    return apiClient<any>(`/api/v1/databases/${enc(database)}/plugins/${enc(pluginId)}/execute`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
