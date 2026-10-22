@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface TableInfo {
@@ -12,7 +12,7 @@ interface ColumnInfo {
   type: string;
 }
 
-export default function DataSeederPlugin() {
+function DataSeederPlugin() {
   const searchParams = useSearchParams();
   const initialDb = searchParams.get("id") || "";
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
@@ -279,5 +279,14 @@ export default function DataSeederPlugin() {
         </div>
       )}
     </div>
+  );
+}
+
+// useSearchParams requires a Suspense boundary for static export
+export default function DataSeederPage() {
+  return (
+    <Suspense fallback={null}>
+      <DataSeederPlugin />
+    </Suspense>
   );
 }

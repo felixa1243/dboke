@@ -40,6 +40,15 @@ Dboke is a highly secure, modern web-based database management tool built with a
 - **Node.js** 20+
 - **npm** or **pnpm**
 
+## Running with Docker
+
+```bash
+cp .env.example .env          # then set DBOKE_MASTER_KEY (32 chars; see keygen below)
+docker compose up --build
+```
+
+The web UI is at http://localhost:3000 and the API at http://localhost:8080. To reach a database running on your machine, enter `host.docker.internal` as the host on the login screen. `NEXT_PUBLIC_API_URL` is baked into the web image at build time, so rebuild (`docker compose build web`) after changing it. Plugin upload is off by default (`DBOKE_ENABLE_PLUGIN_UPLOAD`); note that uploaded plugin frontends are not injected into the static web container.
+
 ## Getting Started
 
 ### 1. Environment Setup
